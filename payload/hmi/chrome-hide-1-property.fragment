@@ -1,0 +1,8 @@
+# yafc-fragment v1
+# id: chrome-hide-1-property
+# target: +10inchP/Root.qml
+# edit: append-after
+# anchor: property bool fullScreenTransparentPopupStacked: false
+# end-header
+    readonly property bool yafcCamFull: ViewManager.activePopup !== null && ViewManager.activePopup !== undefined
+                                        && ViewManager.activePopup.yafcHideChrome === true && !ViewManager.activePopup.hiding

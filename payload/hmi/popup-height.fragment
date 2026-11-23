@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: popup-height
+# target: themes/ford-10P-MY20/styles/RVCPopupStyle.qml
+# edit: replace
+# find: rvcPopupComponentHeight: 480
+# replace: rvcPopupComponentHeight: 1208
+# end-header

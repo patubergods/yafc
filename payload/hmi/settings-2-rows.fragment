@@ -1,0 +1,34 @@
+# yafc-fragment v1
+# id: settings-2-rows
+# target: hmisettings/driverassistance/+10inchP/RVCSettings.qml
+# edit: append-after
+# anchor: scrollableAreaContent: [
+# end-header
+
+        SettingsSwitch {
+            id: yafcEnabledRow
+            objectName: "RVCSettings_yafcEnabled"
+            anchors.right: parent.right
+            text: qsTr("Fullscreen camera")
+            toggled: yafcEnabled
+            onToggleButtonClicked: {
+                yafcEnabled = !yafcEnabled;
+                yafcSaveConfig();
+            }
+            infoButtonVisible: false
+            keepMoreInfoGap: false
+        },
+
+        SettingsSwitch {
+            id: yafcHideChromeRow
+            objectName: "RVCSettings_yafcHideChrome"
+            anchors.right: parent.right
+            text: qsTr("Hide bars during camera")
+            toggled: yafcHideChrome
+            onToggleButtonClicked: {
+                yafcHideChrome = !yafcHideChrome;
+                yafcSaveConfig();
+            }
+            infoButtonVisible: false
+            keepMoreInfoGap: false
+        },

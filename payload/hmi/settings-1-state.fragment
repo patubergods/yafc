@@ -1,0 +1,99 @@
+# yafc-fragment v1
+# id: settings-1-state
+# target: hmisettings/driverassistance/+10inchP/RVCSettings.qml
+# edit: append-after
+# anchor: objectName: "RVCSettings"
+# end-header
+
+    // yafc state. This page and the camera popup write one file, so each
+    // save keeps every key it does not own. This page does not own `view`.
+    property string yafcConfigPath: "file:///fs/rwdata/yafc/camera.conf"
+    property bool yafcEnabled: false
+    property bool yafcHideChrome: false
+    property string yafcLayout: "stock"
+    property string yafcBay: "450"
+    property string yafcBaySide: "left"
+    property string yafcBackground: "black"
+    property string yafcMode: "pass"
+
+    function yafcLoadConfig() {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", yafcConfigPath, false);
+        try {
+            xhr.send();
+            if (xhr.status === 200 || xhr.status === 0) {
+                var lines = xhr.responseText.split("\n");
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].trim();
+                    if (line.length === 0 || line.charAt(0) === "#") continue;
+                    var eq = line.indexOf("=");
+                    if (eq < 0) continue;
+                    var k = line.substring(0, eq).trim();
+                    var v = line.substring(eq + 1).trim();
+                    if (k === "layout") yafcLayout = v;
+                    if (k === "enabled") yafcEnabled = (v === "1");
+                    if (k === "hide_chrome") yafcHideChrome = (v === "1");
+                    if (k === "bay_360") yafcBay = v;
+                    if (k === "bay_side") yafcBaySide = v;
+                    if (k === "mode") yafcMode = v;
+                    if (k === "background") yafcBackground = v;
+                }
+            }
+        } catch (e) {
+            console.log("yafc settings: read failed: " + e);
+        }
+    }
+
+    function yafcSaveConfig() {
+        var order = [];
+        var owned = {};
+        function own(k, v) {
+            if (order.indexOf(k) < 0) order.push(k);
+            owned[k] = "" + v;
+        }
+        own("version", 1);
+        own("enabled", yafcEnabled ? "1" : "0");
+        own("hide_chrome", yafcHideChrome ? "1" : "0");
+        own("layout", yafcLayout);
+        own("bay_360", yafcBay);
+        own("bay_side", yafcBaySide);
+        own("background", yafcBackground);
+        own("mode", yafcMode);
+
+        var keep = [];
+        var get = new XMLHttpRequest();
+        get.open("GET", yafcConfigPath, false);
+        try {
+            get.send();
+            if (get.status === 200 || get.status === 0) {
+                var lines = get.responseText.split("\n");
+                for (var i = 0; i < lines.length; i++) {
+                    var raw = lines[i];
+                    var line = raw.replace(/^\s+|\s+$/g, "");
+                    if (line.length === 0) continue;
+                    if (line.charAt(0) === "#") { keep.push(raw); continue; }
+                    var eq = line.indexOf("=");
+                    if (eq < 0) { keep.push(raw); continue; }
+                    var k = line.substring(0, eq).replace(/^\s+|\s+$/g, "");
+                    if (Object.prototype.hasOwnProperty.call(owned, k)) continue;
+                    keep.push(raw);
+                }
+            }
+        } catch (e) {
+            console.log("yafc settings: config unreadable, not saving: " + e);
+            return;
+        }
+        var parts = [];
+        for (var j = 0; j < order.length; j++) parts.push(order[j] + "=" + owned[order[j]]);
+        var text = parts.concat(keep).join("\n") + "\n";
+        var xhr = new XMLHttpRequest();
+        xhr.open("PUT", yafcConfigPath, false);
+        try {
+            xhr.send(text);
+            console.log("yafc settings: saved");
+        } catch (e) {
+            console.log("yafc settings: save failed: " + e);
+        }
+    }
+
+    Component.onCompleted: yafcLoadConfig()

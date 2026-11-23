@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: chrome-hide-4-transient
+# target: +10inchP/Root.qml
+# edit: replace
+# find: isAvailable: !appStausBar.visible && (ViewManager.activeViewItem && ViewManager.activeViewItem.transientsAllowed)
+# replace: isAvailable: !appStausBar.visible && (ViewManager.activeViewItem && ViewManager.activeViewItem.transientsAllowed) && !root.yafcCamFull
+# end-header

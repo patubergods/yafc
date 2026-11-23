@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: chrome-hide-2-statusbar
+# target: +10inchP/Root.qml
+# edit: replace
+# find: visible: ViewController.activeViewMode !== HmiGui.FarewellViewMode
+# replace: visible: ViewController.activeViewMode !== HmiGui.FarewellViewMode && !root.yafcCamFull
+# end-header

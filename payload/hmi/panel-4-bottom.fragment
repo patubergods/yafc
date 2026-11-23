@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: panel-4-bottom
+# target: hmirvc/+10inchP/RVCPopup.qml
+# edit: replace
+# find: top:container.bottom
+# replace: top: parent.top; topMargin: parent.height - bottomContainer.anchors.bottomMargin - UiTheme.styleRoot.navigationBarHeight - UiTheme.styleRoot.generalMarginBig * 2
+# end-header

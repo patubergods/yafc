@@ -1,0 +1,173 @@
+# yafc-fragment v1
+# id: panel-6-items
+# target: hmirvc/+10inchP/RVCPopup.qml
+# edit: append-after
+# anchor: rootPopupContents: [
+# end-header
+        // yafc sensor bay: the car image and zone halos come from a second
+        // instance of the stock sensor component. It is declared first and
+        // has no z, so every stock item draws above it.
+        Rectangle {
+            id: yafcSensorBay
+            objectName: "RVCPopup_yafcSensorBay"
+            visible: yafcEnabled && showZoomButton && show360View
+            x: yafcHideChrome ? 460 : 430
+            y: yafcHideChrome ? 517 : 628
+            width: yafcHideChrome ? 340 : 370
+            height: yafcHideChrome ? 722 : 478
+            color: "#111a2b"
+        },
+        ParkDistanceControl {
+            id: yafcPdcImage
+            objectName: "ZoomControls_yafcPdcImage"
+            scale: 1.8
+            anchors.horizontalCenter: yafcSensorBay.horizontalCenter
+            anchors.verticalCenter: yafcSensorBay.verticalCenter
+            visible: yafcEnabled && showZoomButton && show360View
+        },
+        // yafc camera panel: opener at the top right, away from the stock
+        // zoom and cancel buttons at the top left.
+        IconPushButton {
+            id: yafcGearButton
+            objectName: "RVCPopup_yafcGearButton"
+            visible: yafcEnabled
+            z: 1000
+            iconId: "shared/icon_menu"
+            shape: HmiGui.Rectangular
+            size: HmiGui.VerySmall
+            variation: HmiGui.FloatButtonVariation
+            anchors {
+                top: parent.top
+                right: parent.right
+                margins: 14
+            }
+            onClicked: yafcPanelOpen = !yafcPanelOpen
+        },
+        Item {
+            id: yafcPanel
+            objectName: "RVCPopup_yafcPanel"
+            anchors.fill: parent
+            visible: yafcEnabled && yafcPanelOpen
+            z: 1000
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#99000000"
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: yafcPanelOpen = false
+                }
+            }
+
+            Rectangle {
+                width: 340
+                height: 340
+                anchors.centerIn: parent
+                color: "#1a1a2e"
+                radius: 12
+                border.color: "#4a4a6a"
+                border.width: 2
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 12
+
+                    Text {
+                        text: "Camera"
+                        color: "#ffffff"
+                        font.pixelSize: 20
+                        font.bold: true
+                    }
+
+                    Text {
+                        text: "View"
+                        color: "#aaaacc"
+                        font.pixelSize: 14
+                    }
+
+                    Row {
+                        spacing: 8
+                        Repeater {
+                            model: [
+                                { key: "front",    label: "Front" },
+                                { key: "rear",     label: "Rear"  },
+                                { key: "front360", label: "F360"  },
+                                { key: "rear360",  label: "R360"  },
+                                { key: "split",    label: "Split" }
+                            ]
+                            Rectangle {
+                                width: 56
+                                height: 40
+                                radius: 6
+                                color: yafcView === modelData.key ? "#4a9eff" : "#2a2a4a"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: "#ffffff"
+                                    font.pixelSize: 12
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: yafcSelectView(modelData.key)
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Layout"
+                        color: "#aaaacc"
+                        font.pixelSize: 14
+                    }
+
+                    Row {
+                        spacing: 8
+                        Repeater {
+                            model: [
+                                { key: "stock",      label: "Stock"      },
+                                { key: "fullscreen", label: "Fullscreen" },
+                                { key: "stacked",    label: "Stacked"    }
+                            ]
+                            Rectangle {
+                                width: 90
+                                height: 40
+                                radius: 6
+                                color: yafcLayout === modelData.key ? "#4a9eff" : "#2a2a4a"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: "#ffffff"
+                                    font.pixelSize: 12
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        yafcLayout = modelData.key;
+                                        yafcSaveConfig();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 120
+                        height: 44
+                        radius: 6
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        color: "#e04040"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Close"
+                            color: "#ffffff"
+                            font.pixelSize: 16
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: yafcPanelOpen = false
+                        }
+                    }
+                }
+            }
+        },

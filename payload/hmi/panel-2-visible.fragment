@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: panel-2-visible
+# target: hmirvc/+10inchP/RVCPopup.qml
+# edit: replace
+# find: onVisibleChanged: {
+# replace: onVisibleChanged: { if (visible) { yafcLoadConfig(); } else { yafcPanelOpen = false; }
+# end-header

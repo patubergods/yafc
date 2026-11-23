@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: chrome-hide-3-menubar
+# target: +10inchP/Root.qml
+# edit: replace
+# find: visible: parent.fullScreenViewActive === 0 && ViewController.activeViewMode !== HmiGui.FarewellViewMode
+# replace: visible: parent.fullScreenViewActive === 0 && ViewController.activeViewMode !== HmiGui.FarewellViewMode && !root.yafcCamFull
+# end-header

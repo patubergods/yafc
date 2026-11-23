@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: chrome-hide-5-tiles
+# target: +10inchP/Root.qml
+# edit: replace
+# find: visible: enabled && ViewManager.activeDomain !== HmiGui.HomeDomain
+# replace: visible: enabled && ViewManager.activeDomain !== HmiGui.HomeDomain && !root.yafcCamFull
+# end-header

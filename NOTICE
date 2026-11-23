@@ -1,0 +1,26 @@
+YAFC - Yet Another Fullscreen Camera
+
+This repository is licensed under the MIT License (see LICENSE). The licence covers
+only the files in this repository.
+
+Not included, and not covered by this licence
+---------------------------------------------
+YAFC runs on a SYNC 3 unit that already has the FMods jailbreak and installer
+installed (https://www.fmods.net/). Those are separate works made by other people.
+They are under their own terms, which this project does not control and does not
+restate. Nothing from FMods is copied, bundled or redistributed here: no jailbreak
+files, no Installer/Daemon, no FMods Tools, and no mod from SyncDB. The stick this
+repository builds calls the hook the FMods installer provides; it does not contain it.
+
+Ford and SYNC are trademarks of their owners. No Ford binary, Ford QML or other Ford
+file is in this repository. The HMI edits are short fragments that the reader applies
+to their own copy of their own unit's files, and the installer makes the preserved
+copy of the unit's own library on the unit itself.
+
+This project is not affiliated with or endorsed by Ford or by FMods.
+
+Credits
+-------
+Kaz Wolfe (https://github.com/KazWolfe) helped with key parts of the functionality.
+The child-window geometry rule used by the bay is described in his independent
+implementation, which was read as a reference; no code from it is included.

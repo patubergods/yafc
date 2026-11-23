@@ -1,0 +1,4 @@
+# Scripts and sources are pinned by hash and run on Linux/QNX: never convert them.
+* text=auto eol=lf
+*.so binary
+toolchain/probe/bin/slotprobe binary

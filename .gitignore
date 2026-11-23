@@ -1,0 +1,31 @@
+# Native build output
+*.o
+*.a
+*.so
+build/
+dist/
+
+# Build output directories, except the artefacts this repository ships.
+toolchain/bin/*
+!toolchain/bin/libyafc.so
+!toolchain/bin/SHA1SUMS.yafc
+toolchain/probe/bin/*
+!toolchain/probe/bin/slotprobe
+!toolchain/probe/bin/libslotgot.so
+!toolchain/probe/bin/libslotgot_ro.so
+!toolchain/probe/bin/libslotexp.so
+!toolchain/probe/bin/SHA256SUMS
+
+# Python output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Editor output
+.vscode/
+.idea/
+*.swp
+*~
