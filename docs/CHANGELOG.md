@@ -3,6 +3,10 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## 2026-11-23 (enabled gate)
+
+- `enabled=0` in `camera.conf` now makes the slot library stand down at the next camera start (log `slot refused: enabled=0`). The shipped value is now `enabled=1`; before, the key was HMI-only and shipped as `0`. Existing installs with `enabled=0` go stock after upgrading the library. Host-verified (test S4b); not run on a radio.
+
 ## 2026-11-23 (process)
 
 - Changes now land through pull requests with full notes and documentation. Added

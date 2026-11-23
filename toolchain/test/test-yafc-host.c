@@ -837,6 +837,18 @@ int main(void)
     posts(2);
     check("S4 removing DISABLE re-arms", log_has("slot active pid 4242") && count("set", CAM) == 4);
 
+    /* ---- S4b. enabled=0 keeps stock; enabled=1 runs ---- */
+    reset_state();
+    write_file("camera.conf", "enabled=0\n" CONF_COMPOSE);
+    start_camera();
+    posts(20);
+    check("S4b enabled=0: refused, stock", log_has("slot refused: enabled=0 pid 4242") && g_got[0] == (void *)f_post_ && count("set", 0) == 0);
+    reset_core(1);
+    write_conf(CONF_COMPOSE);
+    start_camera();
+    posts(2);
+    check("S4b enabled=1 runs", log_has("slot active pid 4242"));
+
     /* ---- S5. wrong or missing window ID: never ours ---- */
     reset_state();
     write_conf(CONF_COMPOSE);
