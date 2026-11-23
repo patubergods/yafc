@@ -11,6 +11,40 @@
     property bool yafcHideChrome: false
     property bool yafcEnabled: false
     property string yafcView: "rear"
+    // Which view button is lit. Not always the config value: the library
+    // composes only the combined views, so trailer zoom and wide keep
+    // view=rear360 / rear while Ford shows another view id.
+    property string yafcViewKey: "rear360"
+    // Our own geometry. Each view button writes its rectangles to the config
+    // and the library reads them live; x,y,w,h in the source buffer (src) and
+    // on screen (dst).
+    property string yafcCamSrc: "0,84,439,316"
+    property string yafcCamDst: "0,0,800,518"
+    property string yafcBaySrc: "447,0,273,480"
+    property string yafcBayDst: "0,522,456,718"
+    property bool yafcSensors: true
+    property bool yafcZoom: false
+    // One entry per view button. `ford` is the view asked of the HMI, `cfg`
+    // what the library composes, `sensors` whether our sensor panel shows.
+    readonly property var yafcViews: ({
+        "rear360": { ford: AL2HMIBridge.RVCSource.IPMBRear360, cfg: "rear360",
+                     camSrc: "0,84,439,316", camDst: "0,0,800,518",
+                     baySrc: "447,0,273,480", bayDst: "0,522,456,718",
+                     sensors: true,  zoom: false },
+        "zoom":    { ford: AL2HMIBridge.RVCSource.IPMBRear360, cfg: "rear360",
+                     camSrc: "0,84,439,316", camDst: "0,0,800,518",
+                     baySrc: "447,0,273,480", bayDst: "0,522,456,718",
+                     sensors: true,  zoom: true },
+        "rear":    { ford: AL2HMIBridge.RVCSource.IPMBRearNormal, cfg: "rear",
+                     sensors: false, zoom: false },
+        "full360": { ford: AL2HMIBridge.RVCSource.IPMBRear360, cfg: "rear360",
+                     camSrc: "447,0,273,480", camDst: "0,0,800,1240",
+                     baySrc: "447,0,273,480", bayDst: "0,0,0,0",
+                     sensors: false, zoom: false },
+        "wide":    { ford: AL2HMIBridge.RVCSource.IPMBRear360, cfg: "rear",
+                     baySrc: "447,0,273,480", bayDst: "0,522,456,718",
+                     sensors: true,  zoom: false }
+    })
     property string yafcMode: "pass"
     property string yafcLayout: "stock"
     property string yafcBay: "450"
@@ -34,7 +68,11 @@
                     var key = line.substring(0, eq).trim();
                     var val = line.substring(eq + 1).trim();
                     if (key === "layout") yafcLayout = val;
-                    if (key === "view") yafcView = val;
+                    if (key === "view") { yafcView = val; yafcViewKey = val; }
+                    if (key === "cam_src") yafcCamSrc = val;
+                    if (key === "cam_dst") yafcCamDst = val;
+                    if (key === "bay_src") yafcBaySrc = val;
+                    if (key === "bay_dst") yafcBayDst = val;
                     if (key === "hide_chrome") yafcHideChrome = (val === "1");
                     if (key === "enabled") yafcEnabled = (val === "1");
                     if (key === "bay_360") yafcBay = val;
@@ -63,6 +101,14 @@
         own("bay_side", yafcBaySide);
         own("background", yafcBackground);
         own("mode", yafcMode);
+        // The view geometry is ours: the library reads these keys live.
+        own("cam_src", yafcCamSrc);
+        own("cam_dst", yafcCamDst);
+        own("bay_src", yafcBaySrc);
+        own("bay_dst", yafcBayDst);
+        // reread=1 lets the library look at the file on every post; its own
+        // wall-clock gate keeps that to a few reads a second.
+        own("reread", 1);
 
         // Keep every other line byte for byte. Re-serialising a line the
         // native reader parses by its first byte could change its meaning.
@@ -104,14 +150,26 @@
         }
     }
 
+    // Apply a view: our geometry first, then the Ford view, then persist.
     function yafcSelectView(v) {
-        yafcView = v;
-        if (v === "front") _hmirvcController.selectRVCView(AL2HMIBridge.RVCSource.IPMBFrontNormal);
-        else if (v === "rear") _hmirvcController.selectRVCView(AL2HMIBridge.RVCSource.IPMBRearNormal);
-        else if (v === "front360") _hmirvcController.selectRVCView(AL2HMIBridge.RVCSource.IPMBFront360);
-        else if (v === "rear360") _hmirvcController.selectRVCView(AL2HMIBridge.RVCSource.IPMBRear360);
-        else if (v === "split") _hmirvcController.selectRVCView(AL2HMIBridge.RVCSource.IPMBRearSplit);
+        var e = yafcViews[v];
+        if (e === undefined) {
+            yafcViewKey = v;
+            yafcView = v;
+            yafcSaveConfig();
+            return;
+        }
+        yafcViewKey = v;
+        yafcView = e.cfg;
+        yafcSensors = e.sensors === true;
+        yafcZoom = e.zoom === true;
+        if (e.camSrc !== undefined) yafcCamSrc = e.camSrc;
+        if (e.camDst !== undefined) yafcCamDst = e.camDst;
+        if (e.baySrc !== undefined) yafcBaySrc = e.baySrc;
+        if (e.bayDst !== undefined) yafcBayDst = e.bayDst;
         yafcSaveConfig();
+        _hmirvcController.selectRVCView(e.ford);
+        if (yafcZoom) _hmirvcController.zoomIn();
     }
 
     Component.onCompleted: yafcLoadConfig()

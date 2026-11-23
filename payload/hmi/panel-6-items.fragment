@@ -10,12 +10,16 @@
         Rectangle {
             id: yafcSensorBay
             objectName: "RVCPopup_yafcSensorBay"
-            visible: yafcEnabled && showZoomButton && show360View
-            x: yafcHideChrome ? 460 : 430
-            y: yafcHideChrome ? 517 : 628
+            // Only while the library is composing a combined view (the panel is
+            // opaque), and only for views that show a sensor panel. The rectangle
+            // starts exactly where the 360 bay ends (456), so no CarPlay shows
+            // through between them.
+            visible: yafcEnabled && showZoomButton && show360View && yafcSensors
+            x: yafcHideChrome ? 456 : 430
+            y: yafcHideChrome ? 522 : 628
             width: yafcHideChrome ? 340 : 370
-            height: yafcHideChrome ? 722 : 478
-            color: "#111a2b"
+            height: yafcHideChrome ? 718 : 478
+            color: "black"
         },
         ParkDistanceControl {
             id: yafcPdcImage
@@ -23,7 +27,7 @@
             scale: 1.8
             anchors.horizontalCenter: yafcSensorBay.horizontalCenter
             anchors.verticalCenter: yafcSensorBay.verticalCenter
-            visible: yafcEnabled && showZoomButton && show360View
+            visible: yafcEnabled && showZoomButton && show360View && yafcSensors
         },
         // yafc camera panel: opener at the top right, away from the stock
         // zoom and cancel buttons at the top left.
@@ -61,7 +65,7 @@
 
             Rectangle {
                 width: 340
-                height: 340
+                height: 220
                 anchors.centerIn: parent
                 color: "#1a1a2e"
                 radius: 12
@@ -90,17 +94,17 @@
                         spacing: 8
                         Repeater {
                             model: [
-                                { key: "front",    label: "Front" },
-                                { key: "rear",     label: "Rear"  },
-                                { key: "front360", label: "F360"  },
-                                { key: "rear360",  label: "R360"  },
-                                { key: "split",    label: "Split" }
+                                { key: "rear360", label: "R360" },
+                                { key: "zoom",    label: "Zoom" },
+                                { key: "rear",    label: "Rear" },
+                                { key: "full360", label: "360"  },
+                                { key: "wide",    label: "Wide" }
                             ]
                             Rectangle {
-                                width: 56
+                                width: 52
                                 height: 40
                                 radius: 6
-                                color: yafcView === modelData.key ? "#4a9eff" : "#2a2a4a"
+                                color: yafcViewKey === modelData.key ? "#4a9eff" : "#2a2a4a"
                                 Text {
                                     anchors.centerIn: parent
                                     text: modelData.label
@@ -110,42 +114,6 @@
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: yafcSelectView(modelData.key)
-                                }
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: "Layout"
-                        color: "#aaaacc"
-                        font.pixelSize: 14
-                    }
-
-                    Row {
-                        spacing: 8
-                        Repeater {
-                            model: [
-                                { key: "stock",      label: "Stock"      },
-                                { key: "fullscreen", label: "Fullscreen" },
-                                { key: "stacked",    label: "Stacked"    }
-                            ]
-                            Rectangle {
-                                width: 90
-                                height: 40
-                                radius: 6
-                                color: yafcLayout === modelData.key ? "#4a9eff" : "#2a2a4a"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    color: "#ffffff"
-                                    font.pixelSize: 12
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        yafcLayout = modelData.key;
-                                        yafcSaveConfig();
-                                    }
                                 }
                             }
                         }

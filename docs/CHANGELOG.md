@@ -3,6 +3,13 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## 2026-11-23
+
+- The HMI fragments carry the per-view geometry from the development build: five views in a fixed
+  order, each writing its own rectangles and sensor-panel switch, with a 150 ms live re-read. The
+  older Front/Rear/F360/R360/Split buttons and the layout row are gone. Host-verified
+  (fragment applier, brace balance); not run on a radio from this repository.
+
 ## 2026-11-22
 
 - The mod is split out of the parent project into `yafc/`, so it can be developed and shared on
