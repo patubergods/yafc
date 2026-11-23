@@ -3,6 +3,11 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## 2026-11-23 (process)
+
+- Changes now land through pull requests with full notes and documentation. Added
+  `.github/pull_request_template.md` and a "How changes land" section in `CONTRIBUTING.md`.
+
 ## 2026-11-23
 
 - The HMI fragments carry the per-view geometry from the development build: five views in a fixed

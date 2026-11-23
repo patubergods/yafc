@@ -3,6 +3,14 @@
 Short version: never replace a Ford file, test on a host before anything touches a unit, and give
 every persistent write a written undo.
 
+## How changes land
+
+Every change goes in as a pull request, never a direct push to `main`. Branch as
+`<type>/<short-topic>`, fill in `.github/pull_request_template.md` (summary, changes, evidence with
+the exact commands and results, risk and undo, docs, follow-ups), and update the docs and
+`CHANGELOG.md` in the same PR. A change with no doc update is incomplete. Re-run the host suites in
+[TESTING.md](TESTING.md) and paste their results. The author does not merge their own PR.
+
 ## The rules
 
 1. **Never replace `/apps/SS_RVC` and never write to a read-only image.** The whole design exists
