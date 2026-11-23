@@ -24,3 +24,9 @@ Credits
 Kaz Wolfe (https://github.com/KazWolfe) helped with key parts of the functionality.
 The child-window geometry rule used by the bay is described in his independent
 implementation, which was read as a reference; no code from it is included.
+
+AI assistance
+-------------
+Most of the code, tests and documentation in this repository was written by large
+language models (including models from Anthropic, OpenAI and DeepSeek, and others)
+under the direction of the repository owner, who reviewed and chose what to keep.

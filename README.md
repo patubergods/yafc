@@ -93,3 +93,12 @@ rule this project's window placement follows. Thanks also to **FMods**, the SYNC
 platform this mod is installed on top of.
 
 No third-party camera mod is included. Ford's binaries and QML stay on their owner's unit.
+
+## How this was written
+
+Most of this project - the code, the tests, the installer and the documentation - was written by
+large language models working under the owner's direction, including models from Anthropic,
+OpenAI and DeepSeek, and others. The owner chose the goals, ran the checks and decided what to
+keep. That is also why the evidence labels above are strict: a model's account of how a system
+behaves is not evidence. Read the code and the tests before you trust either, and do not rely on
+this mod for safe maneuvering.
