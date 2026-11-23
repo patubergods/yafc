@@ -462,6 +462,21 @@ int main(void)
     posts(8);                     /* one self-heal tick fires every 8th post */
     check("geometry reset by the app is re-applied", count("set", CAM) == 4);
     check("the reset is logged", log_has("geometry was reset; re-applying"));
+#ifdef YAFC_SLOT
+    /* The same reset, one post: our geometry must go back BEFORE that post, so
+     * the first frame after Ford's reset is already composed. */
+    {
+        int stock[2] = {800, 1208}, i, fs = -1, fp = -1;
+        f_set_iv_(CAM, SP_SIZE, stock);
+        ncalls = 0;
+        posts(1);
+        for (i = 0; i < ncalls; i++) {
+            if (fs < 0 && !strcmp(calls[i].fn, "set") && calls[i].win == CAM) fs = i;
+            if (fp < 0 && !strcmp(calls[i].fn, "post") && calls[i].win == CAM) fp = i;
+        }
+        check("reset geometry is re-applied BEFORE the next post", fs >= 0 && fp > fs);
+    }
+#endif
 
     /* ---- 3. live change of cam_dst moves camera AND bay ---- */
     write_conf("enabled=1\nlayout=stacked\nmode=compose\nview=rear360\nreread=1\n"

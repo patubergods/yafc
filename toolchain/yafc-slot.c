@@ -214,10 +214,10 @@ static int g_reread = 60;   /* posts between config re-reads; 0 = never */
 /* Wall-clock minimum between re-reads. 1000 ms was too slow for a view switch:
  * the view buttons write the geometry into camera.conf and only then ask Ford for
  * the new view, so for up to a second Ford's own layout was on screen before ours
- * landed, so the previous layout stayed on screen for up to a second. 150 ms
- * bounds that to a couple of frames and costs ~7 small file reads
+ * landed, so the previous layout stayed on screen for up to a second. 40 ms
+ * bounds that to a frame or two and costs ~25 small file reads
  * a second while a camera view is up. */
-static int g_reread_ms = 150;
+static int g_reread_ms = 40;
 static int g_stats;         /* stats=1: log the post rate every ~10 s */
 static int g_bay_id;        /* bay_id=1: set ID_STRING on the bay (default off) */
 static long long g_last_read_ms; /* monotonic ms of the last read_config */
@@ -783,6 +783,51 @@ static void stats_tick(void)
     }
 }
 
+/* Apply our geometry now. Returns 0 when the slot must stay out (marker write
+ * failed). Used before AND after the real post. */
+static int apply_dirty(void *win)
+{
+#ifdef YAFC_SLOT
+    if (!g_inflight) {
+        if (!marker_write()) {
+            diag_log("slot marker write failed; hero not applied", 0, 0, 0);
+            g_slot_dead = 1;
+            return 0;
+        }
+        g_inflight = 1;
+    }
+#endif
+    g_geo_dirty = 0;
+    apply_camera_geometry(win);
+    if (g_bay_win) {
+        int fail = bay_apply_geometry();
+        if (real_flush) real_flush(g_ctx, 0);
+        if (fail) diag_log("bay geometry setfail", fail, 0, 0);
+    }
+    return 1;
+}
+
+#ifdef YAFC_SLOT
+/* Runs BEFORE the real post. A property set takes effect with the next post, so
+ * when Ford resets the window geometry for a view change and posts the first new
+ * frame, putting ours back here makes that frame arrive already composed instead
+ * of showing stock until the next check. Also picks up a changed config ahead of
+ * the frame. Only after the first applied post (g_geo_ours / g_orig_valid). */
+static void pre_post(void *win)
+{
+    if (g_reread > 0 && ++g_tick >= g_reread) {
+        g_tick = 0;
+        if (now_ms() - g_last_read_ms >= g_reread_ms) read_config();
+    }
+    if (g_mode != 2 || !g_view_compose || !set_win_iv || !g_orig_valid || g_slot_dead) return;
+    if (g_geo_ours && geometry_is_ours(win) == 0) {
+        g_geo_dirty = 1;
+        diag_log("geometry was reset; re-applying", g_geo_pushes, 0, 0);
+    }
+    if (g_geo_dirty) apply_dirty(win);
+}
+#endif
+
 /* ------------------------------------------------------- the post-time logic */
 
 static void post_logic(void *win, void *buf)
@@ -807,10 +852,12 @@ static void post_logic(void *win, void *buf)
      * and entering it applies. M-14: the post count is a cheap gate; the wall
      * clock keeps a fast camera from reading the file hundreds of times a
      * second. */
+#ifndef YAFC_SLOT   /* the slot build re-reads in pre_post, ahead of the real post */
     if (g_reread > 0 && ++g_tick >= g_reread) {
         g_tick = 0;
         if (now_ms() - g_last_read_ms >= g_reread_ms) read_config();
     }
+#endif
 
     if (g_mode != 2 || !g_view_compose || !set_win_iv) {
         /* Not ours: hide the bay and hand the window back once. Never destroy
@@ -864,25 +911,7 @@ static void post_logic(void *win, void *buf)
             g_bay_tried = 0;
         }
     }
-    if (g_geo_dirty) {
-#ifdef YAFC_SLOT
-        if (!g_inflight) {
-            if (!marker_write()) {
-                diag_log("slot marker write failed; hero not applied", 0, 0, 0);
-                g_slot_dead = 1;
-                return;
-            }
-            g_inflight = 1;
-        }
-#endif
-        g_geo_dirty = 0;
-        apply_camera_geometry(win);
-        if (g_bay_win) {
-            int fail = bay_apply_geometry();
-            if (real_flush) real_flush(g_ctx, 0);
-            if (fail) diag_log("bay geometry setfail", fail, 0, 0);
-        }
-    }
+    if (g_geo_dirty && !apply_dirty(win)) return;
     ensure_bay_window(win);
     if (g_geo_ours && g_ours_posts < 1000000) g_ours_posts++;
 }
@@ -930,6 +959,12 @@ HOOK_ATTR int HOOK_POST(void *win, void *buf, int count, const int *rects, int f
     int rc;
     resolve();
     if (!g_ready) return -1;   /* logged at init; there is no real post to call */
+#ifdef YAFC_SLOT
+    if (g_is_cam && win == g_cam_win && !__sync_lock_test_and_set(&g_busy, 1)) {
+        pre_post(win);
+        __sync_lock_release(&g_busy);
+    }
+#endif
     rc = real_post(win, buf, count, rects, flags);
     if (rc != 0) return rc;
 #ifdef YAFC_SLOT

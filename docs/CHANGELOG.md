@@ -3,6 +3,10 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## 2026-11-23 (view-switch flash)
+
+- The slot library now fixes the window geometry BEFORE the real post: when Ford resets it for a view change, our rectangles go back ahead of the first new frame, and a changed config is picked up ahead of the frame. The config re-read gate is 40 ms (was 150 ms). Host-verified (new ordering test); not run on a radio.
+
 ## 2026-11-23 (process)
 
 - Changes now land through pull requests with full notes and documentation. Added
