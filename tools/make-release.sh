@@ -1,11 +1,11 @@
 #!/bin/sh
-# Build the three ready-to-use release zips: install, uninstall, rehearse.
+# Build the two ready-to-use release zips: install and uninstall.
 #
 #   sh tools/make-release.sh [version]
 #
 # Runs in WSL Ubuntu (docs/BUILD.md). It builds the library and the probe, stages
 # a stick with tools/make-usb.sh, arms ONE marker on a fresh copy per variant, and
-# writes YAFC-<version>-{install,uninstall,rehearse}.zip plus SHA256SUMS into dist/.
+# writes YAFC-<version>-{install,uninstall}.zip plus SHA256SUMS into dist/.
 # The zip root is the stick root, so unzipping onto a USB drive root is the whole
 # job. Nothing is committed: zips are attached to a GitHub release (docs/RELEASE.md).
 #
@@ -55,20 +55,16 @@ start_here() {
   case "$variant" in
     install) MARK=RUN-YAFC-INSTALL ;;
     uninstall) MARK=RUN-YAFC-REMOVE ;;
-    rehearse) MARK=RUN-YAFC-REHEARSE ;;
   esac
   case "$variant" in
     install) what="Installs the YAFC camera library. The picture changes. The rear camera safety
 path is UNPROVEN on a real unit." ;;
     uninstall) what="Puts the unit's own camera library back and forgets YAFC. The picture
 returns to how the car shipped." ;;
-    rehearse) what="Changes no picture. Runs the whole install with the unit's own bytes,
-to prove the path works on this radio." ;;
   esac
   case "$variant" in
     install) undo="Use YAFC-$VERSION-uninstall.zip the same way." ;;
     uninstall) undo="Nothing to undo. Install YAFC again with YAFC-$VERSION-install.zip." ;;
-    rehearse) undo="Nothing to undo; the picture never changed. Install with YAFC-$VERSION-install.zip." ;;
   esac
   cat <<EOF
 WARNING: unofficial free hobby project, use at your own risk. No warranty, express or
@@ -76,7 +72,7 @@ implied. No support. It may brick the unit or show a wrong or missing camera pic
 We are not responsible for accidents, damage, injury or a voided warranty. Off-road,
 parked, closed-course use only; never rely on it to decide whether it is safe to move.
 If you do not agree, do not use it. Full text: docs/DISCLAIMER.md on GitHub.
-YAFC fullscreen camera for SYNC 3. The public edition has NEVER been tested on a car.
+YAFC fullscreen camera for SYNC 3. Used on the developer's own vehicle; this installer is not yet field-tested.
 
 WHAT THIS STICK DOES
 $what
@@ -124,11 +120,10 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_STORED) as z:
 PY
 }
 
-for variant in install uninstall rehearse; do
+for variant in install uninstall; do
   case "$variant" in
     install) marker=RUN-YAFC-INSTALL ;;
     uninstall) marker=RUN-YAFC-REMOVE ;;
-    rehearse) marker=RUN-YAFC-REHEARSE ;;
   esac
   dest=$WORK/stick-$variant
   sh "$WORK/repo/tools/make-usb.sh" "$dest" >/dev/null
@@ -142,8 +137,7 @@ for variant in install uninstall rehearse; do
   echo "made YAFC-$VERSION-$variant.zip ($marker armed)"
 done
 
-( cd "$OUT" && sha256sum "YAFC-$VERSION-install.zip" "YAFC-$VERSION-uninstall.zip" \
-    "YAFC-$VERSION-rehearse.zip" > SHA256SUMS )
+( cd "$OUT" && sha256sum "YAFC-$VERSION-install.zip" "YAFC-$VERSION-uninstall.zip" > SHA256SUMS )
 
 rm -rf "$WORK"
 echo

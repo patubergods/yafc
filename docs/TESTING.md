@@ -11,7 +11,7 @@ repository does not paper over it.
 | `sh toolchain/probe/test-emulated.sh` | the probe against an emulated loader: the GOT chain resolves, and the read-only variant refuses to write. |
 | `python3 -I tools/test-install.py` | the installer: all four modes, every refusal (no marker, two markers, tampered recovery scripts, missing payload, base missing, a busy layer) **and** a full rehearsal that writes the unit's own bytes through the real path. All assertions must pass. |
 | `sh tools/test-apply-hmi-fragments.sh` | the HMI applier: idempotent, and it refuses a source that does not match the anchors. |
-| `sh tools/test-make-release.sh` | the release assembly, with a stub payload so no cross toolchain is needed: three zips, exactly one marker each and the right one, the stick layout at the zip root with no wrapper directory, no `.running`, no private token in the text, the WARNING block first in every `START-HERE.txt`, `SHA256SUMS` that verify, and the same hashes from two runs. |
+| `sh tools/test-make-release.sh` | the release assembly, with a stub payload so no cross toolchain is needed: two zips, exactly one marker each and the right one, the stick layout at the zip root with no wrapper directory, no `.running`, no private token in the text, the WARNING block first in every `START-HERE.txt`, `SHA256SUMS` that verify, and the same hashes from two runs. |
 
 Run them in WSL Ubuntu from the repository root. Together they cover the parsing, the placement
 arithmetic, the write order, the refusal conditions and the fragment application. They do **not**
