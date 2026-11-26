@@ -474,6 +474,21 @@ int main(void)
     posts(8);                     /* one self-heal tick fires every 8th post */
     check("geometry reset by the app is re-applied", count("set", CAM) == 4);
     check("the reset is logged", log_has("geometry was reset; re-applying"));
+#ifdef YAFC_SLOT
+    /* The same reset, one post: our geometry must go back BEFORE that post, so
+     * the first frame after Ford's reset is already composed. */
+    {
+        int stock[2] = {800, 1208}, i, fs = -1, fp = -1;
+        f_set_iv_(CAM, SP_SIZE, stock);
+        ncalls = 0;
+        posts(1);
+        for (i = 0; i < ncalls; i++) {
+            if (fs < 0 && !strcmp(calls[i].fn, "set") && calls[i].win == CAM) fs = i;
+            if (fp < 0 && !strcmp(calls[i].fn, "post") && calls[i].win == CAM) fp = i;
+        }
+        check("reset geometry is re-applied BEFORE the next post", fs >= 0 && fp > fs);
+    }
+#endif
 
     /* ---- 3. live change of cam_dst moves camera AND bay ---- */
     write_conf("enabled=1\nlayout=stacked\nmode=compose\nview=rear360\nreread=1\n"
@@ -848,6 +863,18 @@ int main(void)
     start_camera();
     posts(2);
     check("S4 removing DISABLE re-arms", log_has("slot active pid 4242") && count("set", CAM) == 4);
+
+    /* ---- S4b. enabled=0 keeps stock; enabled=1 runs ---- */
+    reset_state();
+    write_file("camera.conf", "enabled=0\n" CONF_COMPOSE);
+    start_camera();
+    posts(20);
+    check("S4b enabled=0: refused, stock", log_has("slot refused: enabled=0 pid 4242") && g_got[0] == (void *)f_post_ && count("set", 0) == 0);
+    reset_core(1);
+    write_conf(CONF_COMPOSE);
+    start_camera();
+    posts(2);
+    check("S4b enabled=1 runs", log_has("slot active pid 4242"));
 
     /* ---- S5. wrong or missing window ID: never ours ---- */
     reset_state();

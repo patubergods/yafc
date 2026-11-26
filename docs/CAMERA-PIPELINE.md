@@ -117,15 +117,25 @@ to the HMI fragments and the installer, and the library ignores them; one file h
 | Key | Read by | Shipped value |
 |---|---|---|
 | `version` | installer | `1` |
+<<<<<<< HEAD
 | `enabled` | library start-up, HMI | `0` |
+=======
+| `enabled` | interposer (once, at camera start) and HMI | `1` |
+>>>>>>> origin/feat/pre-post-geometry
 | `layout` | installer | `stock` |
 | `bay_360`, `bay_side`, `background` | HMI | `450`, `left`, `black` |
 | `cover_ms` | HMI black-cover dwell, milliseconds; `0` disables, max 3000 | `700` |
 
+<<<<<<< HEAD
 The library reads only its own keys; boot and interface settings have distinct consumers.
 Its configured view is not proof of the actual incoming camera state. A valid RAM-mailbox
 record overrides the configured rectangles and compose flag until the next valid record.
 An unreadable or oversized configuration can retain previous library state.
+=======
+The interposer reads only its own keys (and `enabled`, once at camera start: `0` means stock); boot and interface settings have distinct consumers.
+Its configured view is not proof of the actual incoming camera state.
+An unreadable or oversized configuration can retain previous interposer state.
+>>>>>>> origin/feat/pre-post-geometry
 Do not assume that every invalid setting selects factory presentation.
 
 ## Views and combinations
