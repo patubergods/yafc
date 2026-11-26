@@ -5,6 +5,13 @@ camera process** instead of replacing it. The camera picture is composed — one
 a second view beneath it, the factory warning text intact — from the moment the camera starts,
 which is several seconds before the main SYNC interface is ready.
 
+> **WARNING: use at your own risk.** YAFC is an unofficial, free hobby project with **no warranty,
+> no support and no liability**. It modifies your vehicle's SYNC 3 unit and its camera system, and
+> it can fail, "brick" the unit, or show a wrong or missing camera picture. It is for **off-road,
+> parked or closed-course experimentation only, not for public roads.** Never rely on it to decide
+> whether it is safe to move. Read the full [DISCLAIMER](docs/DISCLAIMER.md) first. If you do
+> not agree, do not use it.
+
 **The rear camera is safety-critical.** A failure can obscure or interrupt it. Read
 [SAFETY.md](docs/SAFETY.md) and [RECOVERY.md](docs/RECOVERY.md) before a first trial.
 

@@ -1,5 +1,7 @@
 # Safety
 
+> Use is at your own risk, with no warranty, no support and no liability. See [DISCLAIMER.md](DISCLAIMER.md).
+
 The rear camera is safety-critical. A wrong picture is worse than no picture, because the driver
 may trust it. Everything below follows from that.
 
