@@ -1,0 +1,103 @@
+# yafc-fragment v1
+# id: popup-6-items
+# target: hmirvc/+10inchP/RVCPopup.qml
+# edit: append-after
+# anchor: height: _rVCPopupStyle.rvcPopupComponentHeight
+# end-header
+
+            // View opener, top-left. It steps right while the stock cancel
+            // button occupies the corner.
+            IconPushButton {
+                id: yafcViewButton
+                objectName: "RVCPopup_yafcViewButton"
+                visible: true
+                iconId: "parkingfeatures/icon_switch_camera"
+                shape: HmiGui.Rectangular
+                size: HmiGui.VerySmall
+                variation: HmiGui.FloatButtonVariation
+                anchors {
+                    top: parent.top
+                    left: parent.left
+                    topMargin: 14
+                    leftMargin: yafcCancelShown ? 74 : 14
+                }
+                onClicked: yafcPanelOpen = !yafcPanelOpen
+            }
+
+            // One row of stock view icons. Tapping a view closes the row.
+            Item {
+                id: yafcPanel
+                objectName: "RVCPopup_yafcPanel"
+                anchors {
+                    top: yafcViewButton.bottom
+                    left: parent.left
+                    topMargin: 10
+                    leftMargin: 14
+                }
+                width: yafcViewRow.width
+                height: yafcViewRow.height
+                visible: yafcPanelOpen
+                z: 1000
+
+                Row {
+                    id: yafcViewRow
+                    spacing: 10
+                    Repeater {
+                        model: showFrontCamera ? [
+                            { key: "front360", icon: "parkingfeatures/icon_360_view" },
+                            { key: "front",    icon: "parkingfeatures/icon_normal_front_view" },
+                            { key: "frontwide", icon: "parkingfeatures/icon_pano_front_view" },
+                            { key: "front360only", icon: "parkingfeatures/icon_360_view" }
+                        ] : [
+                            { key: "rear360", icon: "parkingfeatures/icon_360_view" },
+                            { key: "rear",    icon: "parkingfeatures/icon_normal_rear_view" },
+                            { key: "wide",    icon: "parkingfeatures/icon_pano_rear_view" },
+                            { key: "full360", icon: "parkingfeatures/icon_360_view" }
+                        ]
+                        IconPushButton {
+                            objectName: "RVCPopup_yafcView_" + modelData.key
+                            iconId: modelData.icon
+                            shape: HmiGui.Rectangular
+                            size: HmiGui.VerySmall
+                            variation: HmiGui.FloatButtonVariation
+                            onClicked: yafcSelectView(modelData.key)
+                        }
+                    }
+                }
+            }
+
+            // Trailer plus: top-right of the video band. The minus is the same
+            // button in the same place after Trailer is entered.
+            IconPushButton {
+                id: yafcZoomInButton
+                objectName: "RVCPopup_yafcZoomInButton"
+                visible: !showFrontCamera && (yafcViewKey === "rear" || yafcViewKey === "rear360") && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                iconId: "shared/icon_mapzoom_in"
+                shape: HmiGui.Rectangular
+                size: (AL2HMIBridge.rvcSource.multiCamSoftButtons || showNonMultiCameraRearNormal) ? HmiGui.VerySmall : HmiGui.Tiny
+                variation: (AL2HMIBridge.rvcSource.multiCamSoftButtons || showNonMultiCameraRearNormal) ? HmiGui.FloatButtonVariation : HmiGui.SolidButtonVariation
+                anchors {
+                    top: parent.top
+                    right: parent.right
+                    topMargin: yafcViewKey === "rear" ? 414 : 14
+                    rightMargin: 14
+                }
+                onClicked: yafcSelectView("zoom")
+            }
+
+            IconPushButton {
+                id: yafcZoomOutButton
+                objectName: "RVCPopup_yafcZoomOutButton"
+                visible: yafcViewKey === "zoom" && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                iconId: "shared/icon_mapzoom_out"
+                shape: HmiGui.Rectangular
+                size: (AL2HMIBridge.rvcSource.multiCamSoftButtons || showNonMultiCameraRearNormal) ? HmiGui.VerySmall : HmiGui.Tiny
+                variation: (AL2HMIBridge.rvcSource.multiCamSoftButtons || showNonMultiCameraRearNormal) ? HmiGui.FloatButtonVariation : HmiGui.SolidButtonVariation
+                anchors {
+                    top: parent.top
+                    right: parent.right
+                    topMargin: 414
+                    rightMargin: 14
+                }
+                onClicked: yafcSelectView("rear")
+            },

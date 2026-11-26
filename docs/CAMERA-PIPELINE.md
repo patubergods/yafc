@@ -58,30 +58,47 @@ One additional post uses a global pair whose live values are **UNPROVEN**.
 A dirty rectangle is not a source and destination rectangle pair.
 The viewport and displayed geometry are separate window properties.
 
-## Interposer
+## Slot library
 
-**Host-verified:** The library intercepts window creation and window posting.
-It retains the Screen context and forwards posts to the real Screen function.
-In `pass` it forwards posts without changing geometry.
-In `diag` it attempts to log buffer size and stride, then forwards the post.
-In `compose` it requests source and displayed geometry for the camera window.
-An optional child window can show another region of the same shared buffer.
-The compositor performs scaling; this version does not rewrite camera pixels.
+**Host-verified:** the library takes the camera's library slot and patches only that process's
+two Screen call slots. It retains the Screen context and forwards posts to the real Screen
+function. In `pass` it forwards posts without changing geometry. In `diag` it attempts to log
+buffer size and stride, then forwards the post. In `compose` it requests source and displayed
+geometry for the camera window. An optional child window can show another region of the same
+shared buffer. The compositor performs scaling; this version does not rewrite camera pixels.
 
-**UNPROVEN:** Child-window creation, sharing, placement, and visibility on every target.
-**UNPROVEN:** A successful post proves that a fresh or complete frame is visible.
+**verified on one radio:** the live view selector publishes the wanted layout to a RAM mailbox,
+`/fs/tmpfs/yafc-view`, on every view pick. The record is one line:
+
+```
+compose;cam_src(4),cam_dst(4),bay_src(4),bay_dst(4)\n
+```
+
+`compose` is `0` or `1`; each rectangle is `x,y,w,h`. A valid record replaces all four
+rectangles; a missing, short, trailing or out-of-range record is ignored and the last good
+geometry stays in force. The library re-reads the mailbox before the real post. The
+configuration file is not rewritten on a view pick; only Settings persists it.
+
+**verified on one radio:** a single-camera view is composed centered in an 800x480 band at
+`y=400`, with the small sensor panel below and black elsewhere. Hero and 360 Only keep the
+two-window layout. The black "Please wait..." cover and its dwell are HMI-only; the library
+does not read `cover_ms`.
+
+**UNPROVEN:** child-window creation, sharing, placement, and visibility on every target.
+**UNPROVEN:** the public fragments and this library have never been applied to a radio.
+**UNPROVEN:** a successful post proves that a fresh or complete frame is visible.
 If the real post cannot be resolved, forwarding cannot succeed.
 A log entry is not a recovery mechanism.
 
 ## Configuration
 
-The following table describes the supplied configuration and the interposer's
+The following table describes the supplied configuration and the library's
 built-in initial values. Configuration behavior is **host-verified**, not a
 promise of safety on a radio. Values use `x,y,width,height` for rectangles.
 Source rectangles use buffer pixels; destination rectangles use screen pixels.
 
-The library reads only the keys in the first table. The second table's keys belong to the HMI
-fragments and the installer, and the library ignores them; one file has three consumers.
+The library reads the keys in the first table plus `enabled`. The other second-table keys belong
+to the HMI fragments and the installer, and the library ignores them; one file has three consumers.
 
 | Key | Meaning and units | Shipped value |
 |---|---|---|
@@ -100,13 +117,15 @@ fragments and the installer, and the library ignores them; one file has three co
 | Key | Read by | Shipped value |
 |---|---|---|
 | `version` | installer | `1` |
-| `enabled` | HMI | `0` |
+| `enabled` | library start-up, HMI | `0` |
 | `layout` | installer | `stock` |
 | `bay_360`, `bay_side`, `background` | HMI | `450`, `left`, `black` |
+| `cover_ms` | HMI black-cover dwell, milliseconds; `0` disables, max 3000 | `700` |
 
-The interposer reads only its own keys; boot and interface settings have distinct consumers.
-Its configured view is not proof of the actual incoming camera state.
-An unreadable or oversized configuration can retain previous interposer state.
+The library reads only its own keys; boot and interface settings have distinct consumers.
+Its configured view is not proof of the actual incoming camera state. A valid RAM-mailbox
+record overrides the configured rectangles and compose flag until the next valid record.
+An unreadable or oversized configuration can retain previous library state.
 Do not assume that every invalid setting selects factory presentation.
 
 ## Views and combinations
@@ -117,13 +136,17 @@ The observed combined image placed the camera and bird's-eye regions side by sid
 The observed single-camera images did not include a bird's-eye view.
 These observations do not exclude other layouts on another vehicle or build.
 
-**Host-verified:** The view policy distinguishes the two combined states
-`IPMBRear360` and `IPMBFront360` from single, split, and trailer states.
-A configured `rear` or `front` is not a combined-view request.
-Split is not treated as a combined state for composition.
-Unknown, trailer, zoom, and single-camera states must retain their full field of view.
-A state name alone does not prove that its hardware is present.
-The exact distinction between the plain and normal front or rear states is **UNPROVEN**.
+**Host-verified:** the configuration fallback distinguishes the two combined states
+`IPMBRear360` and `IPMBFront360` from single, split, and trailer states. A configured
+`rear` or `front` is not a combined-view request. Split is not treated as a combined state
+for that fallback. A state name alone does not prove that its hardware is present.
+
+**verified on one radio:** the rear selector offers Hero, Rear Only, Wide and 360 Only;
+Trailer opens from a plus and returns with a minus. The front selector offers Hero,
+Front Only, Front Wide and 360 Only. Single-camera views use the centered 800x480 band;
+Hero and 360 Only use the two-window layout. Front Wide and the front 360-only crop were
+checked by eye in the car only. The exact distinction between the plain and normal front
+or rear states is **UNPROVEN**.
 
 **Verified on a radio:** One observed split image showed a stitched wide region and a blank region.
 That observation does not establish what the blank region can show in other conditions.

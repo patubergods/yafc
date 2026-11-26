@@ -1,0 +1,93 @@
+# yafc-fragment v1
+# id: popup-5-root
+# target: hmirvc/+10inchP/RVCPopup.qml
+# edit: append-after
+# anchor: rootPopupContents: [
+# end-header
+        // Waits for Ford to settle on its own opening view, then moves to the
+        // default if the user has not already picked one. Inside an Item because
+        // rootPopupContents is a list of Items.
+        Item {
+            visible: false
+            Timer {
+                id: yafcViewTimeout
+                interval: 2000
+                onTriggered: yafcReconcile()
+            }
+            Timer {
+                id: yafcCoverTimer
+                interval: yafcCoverMs
+                onTriggered: yafcCover = false
+            }
+            Timer {
+                id: yafcDefaultTimer
+                interval: 300
+                repeat: false
+                onTriggered: {
+                    if (yafcShown && !yafcUserPicked) yafcApplyDefault(showFrontCamera, true);
+                }
+            }
+        },
+        // Black backdrop: everything the live video, the 360 and the sensor
+        // panel do not cover. It is a set of rectangles around the video holes,
+        // not one full-screen layer, so the camera and 360 windows stay visible.
+        Repeater {
+            objectName: "RVCPopup_yafcBackdrop"
+            model: yafcFill
+            Rectangle {
+                x: modelData[0]; y: modelData[1]
+                width: modelData[2]; height: modelData[3]
+                color: "black"
+                visible: showZoomButton && yafcHideChrome
+            }
+        },
+        // Opaque cover while a cross-stream switch settles.
+        Rectangle {
+            objectName: "RVCPopup_yafcCover"
+            x: 0; y: 0; width: 800; height: 1240
+            color: "black"
+            visible: yafcCover
+        },
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 240
+            text: qsTr("Please wait...")
+            color: "white"
+            font.pixelSize: 40
+            visible: yafcCover
+        },
+        // Sensor bay: an opaque black panel with a second stock sensor
+        // component. It is declared before the stock items so they draw above
+        // it; the stock centred sensor is hidden when YAFC is showing.
+        Rectangle {
+            id: yafcSensorBay
+            objectName: "RVCPopup_yafcSensorBay"
+            visible: showZoomButton && yafcSensors && (show360View || yafcViewKey === "front" || yafcViewKey === "rear" || yafcViewKey === "zoom" || ((yafcViewKey === "wide" || yafcViewKey === "frontwide") && showSplitView))
+            x: yafcHideChrome ? yafcSen[0] : 430
+            y: yafcHideChrome ? yafcSen[1] : 628
+            width: yafcHideChrome ? yafcSen[2] : 370
+            height: yafcHideChrome ? yafcSen[3] : 478
+            color: "black"
+            radius: 0
+        },
+        ParkDistanceControl {
+            id: yafcPdcImage
+            objectName: "ZoomControls_yafcPdcImage"
+            scale: yafcSenScale
+            anchors.horizontalCenter: yafcSensorBay.horizontalCenter
+            anchors.verticalCenter: yafcSensorBay.verticalCenter
+            visible: yafcSensorBay.visible
+        },
+        // The stock safety string sits in the strip below the panels.
+        Text {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            y: 1246
+            z: 1
+            text: textLabel.text
+            color: "white"
+            font.pixelSize: 22
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            visible: showZoomButton && yafcHideChrome
+        },

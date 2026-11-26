@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-11-22. Everything here is one of three labels: **verified on one radio**,
+Last updated 2026-11-25. Everything here is one of three labels: **verified on one radio**,
 **host-verified**, **UNPROVEN**. A label is not upgraded by inference.
 
 ## In one line
@@ -22,6 +22,8 @@ rehearsal, then a real install.
 | Installer, four modes | **host-verified**: every mode and every refusal, plus a rehearsal that writes the unit's own bytes through the real path (`yafc/tools/test-install.py`, all assertions pass). **UNPROVEN** on a unit. |
 | Loader probe | **host-verified** as a build; its own output format is documented from the source. **UNPROVEN** on a unit. |
 | HMI fragments | **host-verified**: the applier is idempotent and refuses a stale source. **UNPROVEN** on a radio composition. |
+| Live view mailbox and compose band | **host-verified** (parser cases in the host suite). **Verified on one radio** in the private development build, not in this edition. |
+| View selectors, Trailer zoom sync, "Please wait..." cover | **host-verified** as fragments on stock-like fixtures. **Verified on one radio** in the private development build (rear selector, Trailer, front selector, cover); front crops were checked by eye only. **UNPROVEN** in this edition and on any other firmware. |
 | Boot hook | **removed**. It was dropped when the design moved to the slot library; there is nothing to install at boot. |
 
 ## What is verified on one radio

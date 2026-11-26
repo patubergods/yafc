@@ -1,0 +1,292 @@
+# yafc-fragment v1
+# id: popup-1-state
+# target: hmirvc/+10inchP/RVCPopup.qml
+# edit: append-after
+# anchor: property int aPAPopupWidth: UiTheme.styleRoot.applicationWidth
+# end-header
+
+    // YAFC state. The popup publishes the live selection to a RAM mailbox;
+    // only the Settings page persists preferences.
+    property bool yafcPanelOpen: false
+    property bool yafcHideChrome: true
+    property string yafcView: "rear"
+    // Which view button is lit. Not always the config value: the library
+    // composes only the combined views, so Trailer and Wide keep the config
+    // value while Ford shows another view id.
+    property string yafcViewKey: "rear360"
+    property bool yafcSensors: true
+    property bool yafcZoom: false
+    // Screen is 800x1280. Per view: `holes` are the rectangles where live
+    // video shows through the transparent popup; `sen` is the sensor panel and
+    // `senScale` its car size; `fill` is the black backdrop that covers
+    // everything else, so no other app can show through a gap.
+    readonly property var yafcViews: ({
+        "rear360": { ford: AL2HMIBridge.RVCSource.IPMBRear360, cfg: "rear360",
+                     camSrc: "0,84,439,316", camDst: "0,0,800,518",
+                     baySrc: "447,0,273,480", bayDst: "0,522,456,718",
+                     holes: [[0,0,800,518],[0,522,456,718]],
+                     sen: [456,522,344,718], senScale: 1.8,
+                     fill: [[0,518,800,4],[0,1240,800,40]],
+                     sensors: true,  zoom: false },
+        // Trailer: Ford's zoom applied to the plain rear stream, laid out like
+        // Rear Only. Zoom on the Hero stream gives the skewed picture.
+        "zoom":    { ford: AL2HMIBridge.RVCSource.IPMBRearNormal, cfg: "rear",
+                     camSrc: "0,6,720,474", camDst: "0,400,800,480",
+                     bayDst: "0,0,0,0", compose: true,
+                     holes: [[0,400,800,480]],
+                     sen: [0,880,800,360], senScale: 1.2,
+                     fill: [[0,0,800,400],[0,1240,800,40]],
+                     sensors: true, zoom: true },
+        "rear":    { ford: AL2HMIBridge.RVCSource.IPMBRearNormal, cfg: "rear",
+                     camSrc: "0,6,720,474", camDst: "0,400,800,480",
+                     bayDst: "0,0,0,0", compose: true,
+                     holes: [[0,400,800,480]],
+                     sen: [0,880,800,360], senScale: 1.2,
+                     fill: [[0,0,800,400],[0,1240,800,40]],
+                     sensors: true, zoom: false },
+        "full360": { ford: AL2HMIBridge.RVCSource.IPMBRear360, cfg: "rear360",
+                     camSrc: "447,0,273,480", camDst: "0,0,800,1240",
+                     baySrc: "447,0,273,480", bayDst: "0,0,0,0",
+                     holes: [[0,0,800,1240]],
+                     sen: [0,0,0,0], senScale: 1,
+                     fill: [[0,1240,800,40]],
+                     sensors: false, zoom: false },
+        "wide":    { ford: AL2HMIBridge.RVCSource.IPMBRearSplit, cfg: "rear",
+                     camSrc: "0,6,720,474", camDst: "0,400,800,480",
+                     bayDst: "0,0,0,0", compose: true,
+                     holes: [[0,400,800,480]],
+                     sen: [0,880,800,360], senScale: 1.2,
+                     fill: [[0,0,800,400],[0,1240,800,40]],
+                     sensors: true, zoom: false },
+        "front":   { ford: AL2HMIBridge.RVCSource.IPMBFrontNormal, cfg: "front",
+                     camSrc: "0,6,720,474", camDst: "0,400,800,480",
+                     bayDst: "0,0,0,0", compose: true,
+                     holes: [[0,400,800,480]],
+                     sen: [0,880,800,360], senScale: 1.2,
+                     fill: [[0,0,800,400],[0,1240,800,40]],
+                     sensors: true, zoom: false },
+        "frontwide": { ford: AL2HMIBridge.RVCSource.IPMBFrontSplit, cfg: "front",
+                     camSrc: "0,6,720,474", camDst: "0,400,800,480",
+                     bayDst: "0,0,0,0", compose: true,
+                     holes: [[0,400,800,480]],
+                     sen: [0,880,800,360], senScale: 1.2,
+                     fill: [[0,0,800,400],[0,1240,800,40]],
+                     sensors: true, zoom: false },
+        "front360only": { ford: AL2HMIBridge.RVCSource.IPMBFront360, cfg: "front360",
+                     camSrc: "447,0,273,480", camDst: "0,0,800,1240",
+                     baySrc: "447,0,273,480", bayDst: "0,0,0,0",
+                     holes: [[0,0,800,1240]],
+                     sen: [0,0,0,0], senScale: 1,
+                     fill: [[0,1240,800,40]],
+                     sensors: false, zoom: false },
+        "front360": { ford: AL2HMIBridge.RVCSource.IPMBFront360, cfg: "front360",
+                     camSrc: "0,84,439,316", camDst: "0,0,800,518",
+                     baySrc: "447,0,273,480", bayDst: "0,522,456,718",
+                     holes: [[0,0,800,518],[0,522,456,718]],
+                     sen: [456,522,344,718], senScale: 1.8,
+                     fill: [[0,518,800,4],[0,1240,800,40]],
+                     sensors: true,  zoom: false }
+    })
+
+    // The look of the current view; set by yafcLook(). Defaults are the Hero.
+    property var yafcSen: [456,522,344,718]
+    property real yafcSenScale: 1.8
+    property var yafcFill: [[0,518,800,4],[0,1240,800,40]]
+    function yafcLook(e) {
+        if (e === undefined || e.sen === undefined) return;
+        yafcSen = e.sen;
+        yafcSenScale = e.senScale;
+        yafcFill = e.fill;
+    }
+
+    // Per-camera default view, chosen on the Camera Settings page. Stored in
+    // camera.conf (`rear_view`, `front_view`) and applied whenever the popup
+    // opens or closes.
+    property string yafcFrontViewPref: "front360"
+    property string yafcRearViewPref: "rear360"
+    property string yafcConfigPath: "file:///fs/rwdata/yafc/camera.conf"
+
+    function yafcLoadConfig() {
+        yafcHideChrome = true;
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", yafcConfigPath, false);
+        try {
+            xhr.send();
+            if (xhr.status === 0 || xhr.status === 200) {
+                var lines = xhr.responseText.split("\n");
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].trim();
+                    if (line.length === 0 || line.charAt(0) === "#") continue;
+                    var eq = line.indexOf("=");
+                    if (eq < 0) continue;
+                    var key = line.substring(0, eq).trim();
+                    var val = line.substring(eq + 1).trim();
+                    if (key === "front_view") yafcFrontViewPref = val;
+                    if (key === "rear_view") yafcRearViewPref = val;
+                    if (key === "hide_chrome") yafcHideChrome = (val === "1");
+                    if (key === "cover_ms") yafcCoverMs = Math.max(0, Math.min(3000, parseInt(val, 10) || 0));
+                }
+            }
+        } catch (e) {
+            console.log("yafc: config read failed: " + e);
+        }
+    }
+
+    function yafcPublishView(e) {
+        var hero = yafcViews.rear360;
+        var compose = e.compose === true || e.cfg === "rear360" || e.cfg === "front360";
+        var text = (compose ? "1;" : "0;") +
+                [e.camSrc || hero.camSrc, e.camDst || hero.camDst,
+                 e.baySrc || hero.baySrc, e.bayDst || hero.bayDst].join(",") + "\n";
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open("PUT", "file:///fs/tmpfs/yafc-view", false);
+            xhr.send(text);
+            if (xhr.status === 0 || xhr.status === 200 || xhr.status === 204) return true;
+            console.log("yafc: view publish status " + xhr.status);
+        } catch (e) {
+            console.log("yafc: view publish failed: " + e);
+        }
+        return false;
+    }
+
+    property string yafcPendingView: ""
+    property bool yafcCover: false
+    property bool yafcZoomSwitch: false
+    property int yafcZoomExtraMs: 300
+    property int yafcCoverMs: 700
+    property bool yafcWasFront: false
+    readonly property int yafcFordView: AL2HMIBridge.rvcSource.multicameraShowing
+    onYafcFordViewChanged: yafcCommitPendingView()
+
+    function yafcApplyLayout(v) {
+        var e = yafcViews[v];
+        if (!yafcPublishView(e)) return false;
+        yafcViewKey = v;
+        yafcView = e.cfg;
+        yafcSensors = e.sensors === true;
+        yafcLook(e);
+        yafcZoom = e.zoom === true;
+        yafcZoomTries = 0;
+        yafcSyncZoom();
+        return true;
+    }
+
+    // Make Ford's zoom level match the layout: zoomed only for Trailer.
+    function yafcSyncZoom() {
+        if (yafcZoomTimer.running) return;
+        var maxed = AL2HMIBridge.rvcSource.rvcZoomLevel === AL2HMIBridge.RVCSource.ZoomLevelMax;
+        if (yafcZoom === maxed) return;
+        if (yafcZoomTries >= 3) return;
+        yafcZoomTries++;
+        if (yafcZoom) _hmirvcController.zoomIn(); else _hmirvcController.zoomOut();
+        yafcZoomTimer.restart();
+    }
+    property int yafcZoomTries: 0
+    Timer { id: yafcZoomTimer; interval: 1200; onTriggered: yafcSyncZoom() }
+    readonly property var yafcZoomLevel: AL2HMIBridge.rvcSource.rvcZoomLevel
+    onYafcZoomLevelChanged: {
+        yafcZoomTimer.stop();
+        if (yafcShown) yafcSyncZoom();
+    }
+
+    function yafcCoverDwell() {
+        yafcCoverTimer.interval = yafcCoverMs + (yafcZoomSwitch ? yafcZoomExtraMs : 0);
+        yafcZoomSwitch = false;
+        yafcCoverTimer.restart();
+    }
+
+    function yafcCommitPendingView() {
+        var v = yafcPendingView;
+        if (!yafcShown || v === "" || yafcViews[v].ford !== yafcFordView) return;
+        if (!yafcApplyLayout(v)) return;
+        yafcPendingView = "";
+        yafcViewTimeout.stop();
+        if (yafcCover) yafcCoverDwell();
+    }
+
+    // No report in time: lay out whatever Ford actually shows. Never leaves the
+    // cover up for good.
+    function yafcReconcile() {
+        yafcPendingView = "";
+        var k = yafcViews[yafcViewKey].ford === yafcFordView ? yafcViewKey : "";
+        for (var n in yafcViews) if (k === "" && yafcViews[n].ford === yafcFordView) k = n;
+        if (k !== "" && yafcApplyLayout(k) && yafcCover) yafcCoverDwell();
+        else yafcCover = false;
+    }
+
+    function yafcSelectView(v) {
+        var e = yafcViews[v];
+        if (!yafcShown || e === undefined || yafcCover) return;
+        yafcUserPicked = true;
+        yafcDefaultTimer.stop();
+        yafcZoomSwitch = yafcZoom && e.zoom !== true;
+        yafcPendingView = v;
+        yafcPanelOpen = false;
+        if (yafcFordView === e.ford) {
+            if (yafcCoverMs > 0 && (e.zoom === true || yafcZoom)) { yafcCover = true; yafcViewTimeout.restart(); }
+            yafcCommitPendingView();
+        } else {
+            if (yafcCoverMs > 0) yafcCover = true;
+            yafcViewTimeout.restart();
+            _hmirvcController.selectRVCView(e.ford);
+        }
+    }
+
+    // Only Settings persists preferences. Reset the RAM selection on close and
+    // again on entry for the camera Ford actually opened.
+    property bool yafcUserPicked: false
+    property bool yafcShown: false
+    function yafcDefaultKey(front) {
+        var map = front ? { "front360": "front360" }
+                        : { "rear360": "rear360", "rear": "rear", "360": "full360", "rearwide": "wide" };
+        var pref = front ? yafcFrontViewPref : yafcRearViewPref;
+        return map[pref] !== undefined ? map[pref] : (front ? "front360" : "rear360");
+    }
+    function yafcApplyDefault(front, callFord) {
+        var key = yafcDefaultKey(front);
+        var e = yafcViews[key];
+        if (!yafcPublishView(e)) return;
+        yafcViewKey = key;
+        yafcView = e.cfg;
+        yafcSensors = e.sensors === true;
+        yafcZoom = false;
+        yafcSyncZoom();
+        yafcLook(e);
+        if (callFord && AL2HMIBridge.rvcSource.multicameraShowing !== e.ford)
+            _hmirvcController.selectRVCView(e.ford);
+    }
+
+    function yafcVisibleChanged(vis) {
+        if (vis) {
+            yafcLoadConfig();
+            yafcShown = true;
+            yafcUserPicked = false;
+            // The stock zoom, camera-row and centred sensor controls are
+            // replaced by the YAFC row and sensor bay. Assigning the property
+            // breaks the stock binding for this popup instance.
+            zoomButton.visible = false;
+            cameraViewButtons.visible = false;
+            pdcImage.visible = false;
+            bottomContainer.source = "";
+            cancelButton.visible = yafcCancelShown;
+            textLabel.visible = showZoomButton && !yafcHideChrome;
+            yafcDefaultTimer.restart();
+        } else {
+            yafcPanelOpen = false;
+            yafcDefaultTimer.stop();
+            yafcShown = false;
+            yafcPendingView = "";
+            yafcViewTimeout.stop();
+            yafcCoverTimer.stop();
+            yafcCover = false;
+            yafcUserPicked = false;
+            yafcApplyDefault(yafcWasFront, false);
+        }
+    }
+
+    Component.onCompleted: { yafcLoadConfig(); yafcApplyDefault(false, false); }
+
+    onShowFrontCameraChanged: if (yafcShown) { yafcWasFront = showFrontCamera; if (showFrontCamera) yafcPanelOpen = false; }
+
+    readonly property bool yafcCancelShown: (showCancelButton && !ViewController.qrvc && cameraViewActivatedByReverseGear) || showCancelButtonBoundaryAlertRVC

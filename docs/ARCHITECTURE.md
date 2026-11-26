@@ -33,7 +33,7 @@ It is freestanding: it declares its own prototypes and includes no system header
 
 ### Start-up, in order
 
-An `__attribute__((constructor))` function runs before `main` and decides, in four checks,
+An `__attribute__((constructor))` function runs before `main` and decides, in five checks,
 whether to act. Every refusal writes one line to `/fs/rwdata/yafc/post.log`, and every step is
 read-only:
 
@@ -42,9 +42,10 @@ read-only:
    FNV-1a-64 hash over that text is compared with the recorded value. The observed build is
    294,564 bytes with text hash `0xf3442ba773f7b837`. A different build refuses here.
 2. **The kill switch.** `/fs/rwdata/yafc/DISABLE` means stand down.
-3. **The strike counter.** If `/fs/rwdata/yafc/slot-inflight` is still present, the previous run
+3. **The enabled gate.** `enabled=0` in `camera.conf` means stand down until the next boot.
+4. **The strike counter.** If `/fs/rwdata/yafc/slot-inflight` is still present, the previous run
    never proved itself: it adds a strike. At three strikes it writes `DISABLE` and stands down.
-4. **The call slots.** It resolves the real functions from `libscreen.so.1` with
+5. **The call slots.** It resolves the real functions from `libscreen.so.1` with
    `dlopen`/`dlsym`, then checks that the camera's own GOT slots (`0x144d80` for
    `screen_post_window`, `0x144dd4` for `screen_create_window`) still hold libscreen's addresses.
    That check proves relocation is finished and that nothing else has written there.
@@ -58,7 +59,7 @@ before the camera creates any window.
 The camera imports `screen_post_window` and `screen_create_window` from `libscreen.so.1`, which
 sits earlier on the search path. Defining those names in the slot library would not bind them.
 Writing the camera's own GOT slots does, and the equality check above makes the write safe: if
-any of the four conditions is not what we recorded, the write does not happen.
+any of the five conditions is not what we recorded, the write does not happen.
 
 **UNPROVEN:** this on any build but the observed one. The offsets and the hash are build-specific
 and the repository says so next to them.
@@ -67,8 +68,10 @@ and the repository says so next to them.
 
 - `hook_create_window` - calls the real function, records the returned window and the current
   Screen context, returns the real result. Nothing else.
-- `hook_post_window` - calls the real post **first**, then, only in a non-pass mode and only for
-  the camera's own frame window, adjusts the window (below), and returns the real result.
+- `hook_post_window` - before the real post, reads the RAM mailbox and re-applies our geometry
+  if the factory reset it; then calls the real post **first**, and only in a non-pass mode and
+  only for the camera's own frame window, adjusts the window (below) and returns the real
+  result.
 
 In the LD_PRELOAD build the same code exports those two names instead of patching the GOT. That
 build is for host tests and diagnostics; the slot build is the supported one.
@@ -92,13 +95,28 @@ destination property** - the "destination rectangle" a property dump prints is d
 - `mode=compose` (2) - apply the geometry and compose the layout.
 - Any other value means pass. The pixel-writing and probe modes were removed on 2026-11-20.
 
+### The live view mailbox
+
+**verified on one radio:** the view selector writes one line to `/fs/tmpfs/yafc-view` on every
+pick: `compose;cam_src(4),cam_dst(4),bay_src(4),bay_dst(4)\n`, with `compose` set to `0` or
+`1` and each rectangle as `x,y,w,h`. The library reads it before the real post, so a view pick
+does not wait for the configuration poll. A valid record replaces all four rectangles and the
+compose flag. A missing, short, trailing or out-of-range record is ignored; the last good
+geometry stays in force. The file is in RAM and disappears on a soft reset.
+
+**host-verified:** the parser accepts the valid record, rejects truncated, garbage, negative,
+oversized and zero-width records, and falls back without moving a window off a sane range.
+
+**verified on one radio:** a single-camera view is centered in an 800x480 band at `y=400`;
+Hero and 360 Only keep the two-window layout. The black "Please wait..." cover is HMI-only.
+
 ### The bay (the 360 panel)
 
 The bay shows a second region of the same buffer, using `screen_share_window_buffers`. It is a
 **child window** of the camera window, joined to a window group parented by it, so it inherits the
 camera's visibility and disappears with it. If parenting fails it is destroyed rather than left
-visible. A child's `POSITION` is relative to its parent's. The bay is off unless `bay_id=1` and a
-`bay_dst` is set.
+visible. A child's `POSITION` is relative to its parent's. The bay is off unless `bay_src` and
+`bay_dst` both have a positive width and height.
 
 **verified on one radio:** an earlier version made the bay a second top-level window, shown once
 and never hidden; because the factory visibility manager, not the camera, shows and hides
@@ -114,26 +132,28 @@ are not ours. Nothing in the library writes into a buffer any more, and CAMERA-P
 ## The configuration
 
 `/fs/rwdata/yafc/camera.conf` is a flat `key=value` file, at most 4095 bytes, read from the start
-and re-read on a post every `reread` posts (`reread=60` by default, `0` means never). Keys:
+and re-read in the slot build before the real post every `reread` posts (`reread=60` by default,
+`0` means never). A valid RAM-mailbox record overrides `view` and the four rectangles. Keys:
 
 | Key | Meaning |
 |---|---|
 | `mode` | `pass`, `diag` or `compose` |
+| `enabled` | `0` keeps the slot off until the next boot; absent or any other value means on |
 | `view` | the view name the rectangles come from |
 | `reread` | posts between configuration re-reads; `0` never |
 | `stats` | `1` logs a rate line about every ten seconds |
 | `cam_src`, `cam_dst` | the camera's source region and destination rectangle |
 | `sen_dst` | the sensor area |
 | `tail_dst` | the trailer view rectangle |
-| `bay_id`, `bay_src`, `bay_dst` | the bay: on/off, its source region, its rectangle |
+| `bay_id`, `bay_src`, `bay_dst` | the bay: ID string on/off, its source region, its rectangle |
+| `cover_ms` | HMI black-cover dwell in milliseconds; read by the fragments, not the library |
 
 Values are validated against a small set and the built-in defaults cover anything missing or out
 of range, so a damaged file falls back safely. The shipped default is
 `payload/config/camera.conf`.
 
-**UNPROVEN:** whether a warm start (a re-read without a restart) is needed at all, and the values
-for the 360, Trailer and ship-config shapes - a config fragment ships, but no radio run has
-exercised it.
+**UNPROVEN:** the values for the 360, Trailer and ship-config shapes on a public build; the
+public fragments and library have never been applied to a radio.
 
 ## The failure counter
 
