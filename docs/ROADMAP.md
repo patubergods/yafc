@@ -15,19 +15,19 @@ every other process, and every Ford file alone. See [ARCHITECTURE.md](ARCHITECTU
 - Per-view rectangles and presets, resolved from one ordered set of sources.
 - The configuration file, with the library's keys and the HMI's keys in one file.
 - The bay as a child window of the camera window, so it hides with the camera.
-- The installer: one worker, four modes, one marker each, receipts, and a rehearsal mode.
+- The installer: one worker, five modes, one marker each, receipts, a rehearsal mode and the USB
+  HMI image path (source-level only).
 - The USB tooling, which refuses an armed stick and writes a hash list.
 - The host suite, including the installer rehearsal and the fragment applier.
 - The documentation set you are reading.
 
 ## Not done
 
-- **No radio run of the public edition.** Every radio claim in this repository is from an earlier
-  development build on one unit.
+- **No radio run of the packaged installer.** Vehicle observations come from a development
+  build on one 2020 Explorer ST.
 - The loader probe has not been run on a unit from this repository.
-- The install has not been exercised on a unit from this repository.
-- The 360 and Trailer views have not been observed; only rear, split and the combined rear-360
-  states have.
+- The install and USB HMI image path have not been exercised on a unit from this repository.
+- The 360 and Zoomed View layouts in the public build have not been checked on a radio.
 - The strike counter has never been made to fire on purpose.
 - The HMI values for the ship-config shape are supplied but unexercised.
 - Whether a warm start re-reads the configuration is unknown.

@@ -3,7 +3,22 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
-<<<<<<< HEAD
+## 2026-11-25 (USB HMI install and removal)
+
+- The USB installer stages the radio's four stock HMI files, applies the complete
+  fragment set, and builds and verifies an overlay image without shipping Ford QML.
+- Rehearsal checks an image without publishing it or seeding configuration. Install
+  seeds missing configuration and publishes with a verified same-directory rename.
+- Full removal deletes the HMI overlay before restoring the slot. HMI-only removal
+  leaves the library untouched. Both check the surviving mount stack.
+- Popup changes are gated on configuration, the kill switch, and verified mailbox
+  publication. Both sets of default views are honored and stock bindings are preserved.
+- Added host regressions for mount handling, failure cleanup, configuration, live
+  mailbox posts, popup behavior and packaged payloads. The public paths remain unproven on a radio.
+- Release packaging now produces only install and uninstall zips. Source-built
+  sticks still support rehearsal. User instructions call the rear zoom mode Zoomed View
+  and distinguish the startup timing observed on one 2020 Explorer ST from untested hardware.
+
 ## 2026-11-25
 
 - Ported the camera views verified in the development build into the public edition. **Host-verified**
@@ -20,15 +35,16 @@ mods; anything before the split is not part of this repository.
 - The Hero button uses a stock icon, not the composite icon of the development build.
 - Tests: mailbox parser cases in the host suite; the fragment test now applies the whole set, checks
   idempotence and refusal, balance, and rejects private tokens.
-=======
+
 ## 2026-11-23 (view-switch flash)
 
-- The slot library now fixes the window geometry BEFORE the real post: when Ford resets it for a view change, our rectangles go back ahead of the first new frame, and a changed config is picked up ahead of the frame. The config re-read gate is 40 ms (was 150 ms). Host-verified (new ordering test); not run on a radio.
+- The slot library began fixing window geometry before the real post, so a Ford view switch
+  arrives with the corrected rectangles. This change used a 40 ms config re-read gate, down
+  from 150 ms. Host-verified (ordering test); not run on a radio.
 
 ## 2026-11-23 (enabled gate)
 
 - `enabled=0` in `camera.conf` now makes the slot library stand down at the next camera start (log `slot refused: enabled=0`). The shipped value is now `enabled=1`; before, the key was HMI-only and shipped as `0`. Existing installs with `enabled=0` go stock after upgrading the library. Host-verified (test S4b); not run on a radio.
->>>>>>> origin/feat/pre-post-geometry
 
 ## 2026-11-23 (process)
 
@@ -57,9 +73,9 @@ mods; anything before the split is not part of this repository.
   parent's source coordinates), which is what the HMI aperture assumes.
 - The bay (360 panel) is created as a child window of the camera window and joined to a window
   group, so it inherits the camera's visibility and cannot be left on screen.
-- The installer is rebuilt: one worker, four modes (`install`, `rehearse`, `remove`, `disable`),
-  one marker each, a preserved copy of the unit's own library, a probe before the marker is
-  consumed, recovery-script hashes, and receipts.
+- The installer was rebuilt: one worker, four modes at that time (`install`, `rehearse`, `remove`,
+  `disable`), one marker each, a preserved copy of the unit's own library, a probe before the marker
+  is consumed, recovery-script hashes, and receipts.
 - A `rehearse` mode writes the unit's own bytes through the real write path, so the whole
   installer can be exercised without changing the picture.
 - The standalone test rigs are replaced by one host suite, and the installer and the fragment

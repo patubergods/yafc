@@ -9,13 +9,14 @@ repository does not paper over it.
 |---|---|
 | `sh toolchain/test/run-host-test.sh` | the hook's logic in **both** builds: the LD_PRELOAD interposer and the slot build. Set `SS_RVC_STOCK` to a copy of the camera binary to also check the recorded text hash against a real file (without it that check is skipped and says so). |
 | `sh toolchain/probe/test-emulated.sh` | the probe against an emulated loader: the GOT chain resolves, and the read-only variant refuses to write. |
-| `python3 -I tools/test-install.py` | the installer: all four modes, every refusal (no marker, two markers, tampered recovery scripts, missing payload, base missing, a busy layer) **and** a full rehearsal that writes the unit's own bytes through the real path. All assertions must pass. |
+| `python3 -I tools/test-install.py` | all five modes, mounted-image refusal, exact stack replay, slot rollback, config seeding, publication and deletion failures, build cleanup, marker dispatch, and the stale-binary packaging guard. Runs fragment JavaScript against fake QML services using Node.js. |
 | `sh tools/test-apply-hmi-fragments.sh` | the HMI applier: idempotent, and it refuses a source that does not match the anchors. |
-| `sh tools/test-make-release.sh` | the release assembly, with a stub payload so no cross toolchain is needed: two zips, exactly one marker each and the right one, the stick layout at the zip root with no wrapper directory, no `.running`, no private token in the text, the WARNING block first in every `START-HERE.txt`, `SHA256SUMS` that verify, and the same hashes from two runs. |
+| `sh tools/test-make-release.sh` | the release assembly, with a stub payload so no cross toolchain is needed: only install and uninstall zips, one correct marker each, the stick layout at the zip root, no `.running` or private tokens, warning and evidence wording in `START-HERE.txt`, and `SHA256SUMS` that verify and match across two runs. |
 
-Run them in WSL Ubuntu from the repository root. Together they cover the parsing, the placement
-arithmetic, the write order, the refusal conditions and the fragment application. They do **not**
-cover the loader, live video, the compositor, or anything in a vehicle.
+Run them in WSL Ubuntu from the repository root. The installer suite needs `dash`, `openssl`,
+`tar`, Node.js and Python 3. If WSL has no `node`, the suite uses Windows `node.exe` on PATH.
+Its mock mounts expose actual staged file contents; they do not
+establish QNX mount behavior, Ford QML rendering, live video or vehicle safety.
 
 ## The loader probe
 
@@ -56,14 +57,14 @@ it. Record the result either way.
 |---|---|---|
 | Host suite | the tables above | logic, arithmetic, write order, refusals |
 | Probe on the unit | `slotprobe` in the slot | the loader binds us, and what it binds |
-| Rehearsal | `RUN-YAFC-REHEARSE` | the whole install path with the unit's own bytes - **no picture change**, **UNPROVEN** until run on a unit |
-| Real install | `RUN-YAFC-INSTALL` | the picture on that unit - **UNPROVEN** until run on a unit |
+| Rehearsal | `RUN-YAFC-REHEARSE` | re-writes the current slot bytes and builds and reads back the HMI image without publishing; **UNPROVEN** on a unit |
+| Real install | `RUN-YAFC-INSTALL` | the library and USB HMI image on that unit - **UNPROVEN** until run on a unit |
 
 ## Only a unit can show
 
 - whether the composed picture is right, on that vehicle, in that view;
 - whether the camera keeps posting without a stall through a mode switch;
-- the real HMI values for 360, Trailer and ship-config shapes;
+- the real HMI values for 360, Zoomed View and ship-config shapes;
 - whether the counter fires under a real failing boot.
 
 ## See also

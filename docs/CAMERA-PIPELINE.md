@@ -110,32 +110,22 @@ to the HMI fragments and the installer, and the library ignores them; one file h
 | `bay_dst` | bay rectangle, screen pixels; a zero width or height disables the bay | `0,522,456,718` |
 | `bay_id` | set the child window's `ID_STRING` | `0` |
 | `sen_dst` | reserved sensor rectangle; parsed but unused | empty |
-| `tail_dst` | reserved trailer rectangle; parsed but unused | empty |
+| `tail_dst` | reserved rectangle; parsed but unused | empty |
 | `reread` | posts between configuration re-reads; `0` disables later reads | `1` |
 | `stats` | `1` logs a post-rate line about every ten seconds | `0` |
 
 | Key | Read by | Shipped value |
 |---|---|---|
 | `version` | installer | `1` |
-<<<<<<< HEAD
-| `enabled` | library start-up, HMI | `0` |
-=======
-| `enabled` | interposer (once, at camera start) and HMI | `1` |
->>>>>>> origin/feat/pre-post-geometry
+| `enabled` | slot library (once, at camera process start) and HMI | `1` |
 | `layout` | installer | `stock` |
 | `bay_360`, `bay_side`, `background` | HMI | `450`, `left`, `black` |
 | `cover_ms` | HMI black-cover dwell, milliseconds; `0` disables, max 3000 | `700` |
 
-<<<<<<< HEAD
-The library reads only its own keys; boot and interface settings have distinct consumers.
-Its configured view is not proof of the actual incoming camera state. A valid RAM-mailbox
+The library reads only its own keys. It checks `enabled` at camera process startup; `0` means
+stock. The configured view does not establish the incoming camera state. A valid RAM-mailbox
 record overrides the configured rectangles and compose flag until the next valid record.
 An unreadable or oversized configuration can retain previous library state.
-=======
-The interposer reads only its own keys (and `enabled`, once at camera start: `0` means stock); boot and interface settings have distinct consumers.
-Its configured view is not proof of the actual incoming camera state.
-An unreadable or oversized configuration can retain previous interposer state.
->>>>>>> origin/feat/pre-post-geometry
 Do not assume that every invalid setting selects factory presentation.
 
 ## Views and combinations
@@ -147,12 +137,12 @@ The observed single-camera images did not include a bird's-eye view.
 These observations do not exclude other layouts on another vehicle or build.
 
 **Host-verified:** the configuration fallback distinguishes the two combined states
-`IPMBRear360` and `IPMBFront360` from single, split, and trailer states. A configured
+`IPMBRear360` and `IPMBFront360` from single, split, and zoomed states. A configured
 `rear` or `front` is not a combined-view request. Split is not treated as a combined state
 for that fallback. A state name alone does not prove that its hardware is present.
 
 **verified on one radio:** the rear selector offers Hero, Rear Only, Wide and 360 Only;
-Trailer opens from a plus and returns with a minus. The front selector offers Hero,
+Zoomed View opens from a plus and returns with a minus. The front selector offers Hero,
 Front Only, Front Wide and 360 Only. Single-camera views use the centered 800x480 band;
 Hero and 360 Only use the two-window layout. Front Wide and the front 360-only crop were
 checked by eye in the car only. The exact distinction between the plain and normal front

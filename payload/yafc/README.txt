@@ -16,18 +16,21 @@ What the installer writes
 libyafc.so is placed in the camera's link path under the name the camera expects,
 libRCN_DiagnosticsLib.so, inside the writable base partition. The radio's own
 library is first copied to a second name in the same directory, so every other
-process that uses that slot keeps resolving the original functions. See
-../docs/ARCHITECTURE.md for why that is what makes the picture appear early, and
-../docs/CAMERA-PIPELINE.md for the geometry.
+process that uses that slot keeps resolving the original functions. On the
+developer's 2020 Explorer ST, fullscreen rear video appeared before SYNC finished
+starting; the 360 view, parking sensors and view buttons appeared later. This
+packaged installer has not been run on a radio. See docs/ARCHITECTURE.md for
+details about the early video path and docs/CAMERA-PIPELINE.md for the geometry.
 
-camera.conf is the configuration. The library re-reads it live. A copy
-belongs at /fs/rwdata/yafc/camera.conf on the unit. The kill-switch file
-/fs/rwdata/yafc/DISABLE makes the library refuse to act, which is the fast way
-back to the factory picture: see ../docs/RECOVERY.md.
+The installer seeds /fs/rwdata/yafc/camera.conf if absent and preserves existing
+settings. The DISABLE file in the same directory makes the library stand down on
+the next camera process start, and the popup keeps the stock controls and layout.
+Restart the unit after setting it: see ../docs/RECOVERY.md.
 
 hmi/ holds the on-screen edits as fragments: our code plus short anchor strings,
 applied to the radio's own HMI files by tools/apply-hmi-fragments.sh. No Ford QML
-is redistributed. See ../docs/HMI-PATCH.md.
+is redistributed. The installer builds them into /fs/images/overlay_00--yafc.img;
+RUN-YAFC-REMOVE-HMI deletes that image alone. See ../docs/HMI-PATCH.md.
 
 What used to be here
 --------------------

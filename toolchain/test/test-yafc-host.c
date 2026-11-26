@@ -1028,6 +1028,31 @@ int main(void)
     read_live_view();
     check("S9 trailing bytes fall back", !g_live_view && g_cam_dst[1] == 71);
 
+    /* A mailbox update must affect the actual post path with config polling off. */
+    reset_state(); reset_view_rects();
+    write_conf(CONF_COMPOSE "reread=0\n");
+    start_camera();
+    posts(2);
+    write_file("yafc-view", "1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    ncalls = 0;
+    posts(1);
+    {
+        int i, first_set = -1, first_post = -1;
+        for (i = 0; i < ncalls; i++) {
+            if (calls[i].win != CAM) continue;
+            if (first_set < 0 && !strcmp(calls[i].fn, "set")) first_set = i;
+            if (first_post < 0 && !strcmp(calls[i].fn, "post")) first_post = i;
+        }
+        check("S10 live mailbox geometry applies before the next camera post",
+              g_live_view && g_geo_ours && g_cam_dst[1] == 400 && first_set >= 0 && first_post > first_set);
+    }
+    write_file("yafc-view", "1;0,6");
+    posts(1);
+    check("S10 partial live write keeps last valid geometry", g_geo_ours && g_cam_dst[1] == 400);
+    write_file("yafc-view", "0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    posts(1);
+    check("S10 live compose-off restores stock", !g_view_compose && !g_geo_ours && !g_bay_shown);
+
     /* the recorded hash matches the real binary when it is available */
     {
         const char *p = getenv("SS_RVC_STOCK");

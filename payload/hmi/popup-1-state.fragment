@@ -8,7 +8,8 @@
     // YAFC state. The popup publishes the live selection to a RAM mailbox;
     // only the Settings page persists preferences.
     property bool yafcPanelOpen: false
-    property bool yafcHideChrome: true
+    property bool yafcHideChromePref: true
+    readonly property bool yafcHideChrome: yafcShown && yafcHideChromePref
     property string yafcView: "rear"
     // Which view button is lit. Not always the config value: the library
     // composes only the combined views, so Trailer and Wide keep the config
@@ -105,12 +106,35 @@
     property string yafcFrontViewPref: "front360"
     property string yafcRearViewPref: "rear360"
     property string yafcConfigPath: "file:///fs/rwdata/yafc/camera.conf"
+    property string yafcDisablePath: "file:///fs/rwdata/yafc/DISABLE"
+
+    function yafcDisabled() {
+        var xhr = new XMLHttpRequest();
+        try {
+            xhr.open("GET", yafcDisablePath, false);
+            xhr.send();
+            // A local reply can have status 0 even on success. The length
+            // header also detects an empty marker made with touch.
+            return xhr.status === 200 ||
+                    (xhr.status === 0 && (/^[0-9]+$/.test(xhr.getResponseHeader("Content-Length")) ||
+                                         xhr.responseText.length > 0));
+        } catch (e) {
+            return true;
+        }
+    }
 
     function yafcLoadConfig() {
-        yafcHideChrome = true;
+        yafcHideChromePref = true;
+        yafcFrontViewPref = "front360";
+        yafcRearViewPref = "rear360";
+        yafcCoverMs = 700;
+        if (yafcDisabled()) return false;
+        var mode = "pass";
+        var enabled = true;
+        var sawEnabled = false;
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", yafcConfigPath, false);
         try {
+            xhr.open("GET", yafcConfigPath, false);
             xhr.send();
             if (xhr.status === 0 || xhr.status === 200) {
                 var lines = xhr.responseText.split("\n");
@@ -123,27 +147,41 @@
                     var val = line.substring(eq + 1).trim();
                     if (key === "front_view") yafcFrontViewPref = val;
                     if (key === "rear_view") yafcRearViewPref = val;
-                    if (key === "hide_chrome") yafcHideChrome = (val === "1");
+                    if (key === "mode") mode = val;
+                    if (line.indexOf("enabled=") === 0 && !sawEnabled) {
+                        enabled = line.charAt(8) !== "0";
+                        sawEnabled = true;
+                    }
+                    if (key === "hide_chrome") yafcHideChromePref = (val === "1");
                     if (key === "cover_ms") yafcCoverMs = Math.max(0, Math.min(3000, parseInt(val, 10) || 0));
                 }
             }
         } catch (e) {
             console.log("yafc: config read failed: " + e);
         }
+        return enabled && mode === "compose";
     }
 
     function yafcPublishView(e) {
+        if (!yafcShown || e === undefined) return false;
         var hero = yafcViews.rear360;
         var compose = e.compose === true || e.cfg === "rear360" || e.cfg === "front360";
         var text = (compose ? "1;" : "0;") +
                 [e.camSrc || hero.camSrc, e.camDst || hero.camDst,
                  e.baySrc || hero.baySrc, e.bayDst || hero.bayDst].join(",") + "\n";
+        var yafcViewUrl = "file:///fs/tmpfs/yafc-view";
         try {
             var xhr = new XMLHttpRequest();
-            xhr.open("PUT", "file:///fs/tmpfs/yafc-view", false);
+            xhr.open("PUT", yafcViewUrl, false);
             xhr.send(text);
-            if (xhr.status === 0 || xhr.status === 200 || xhr.status === 204) return true;
-            console.log("yafc: view publish status " + xhr.status);
+            if (xhr.status === 0 || xhr.status === 200 || xhr.status === 204) {
+                var verify = new XMLHttpRequest();
+                verify.open("GET", yafcViewUrl, false);
+                verify.send();
+                if ((verify.status === 0 || verify.status === 200) && verify.responseText === text)
+                    return true;
+            }
+            console.log("yafc: view publish could not be verified; PUT status " + xhr.status);
         } catch (e) {
             console.log("yafc: view publish failed: " + e);
         }
@@ -174,6 +212,7 @@
 
     // Make Ford's zoom level match the layout: zoomed only for Trailer.
     function yafcSyncZoom() {
+        if (!yafcShown) return;
         if (yafcZoomTimer.running) return;
         var maxed = AL2HMIBridge.rvcSource.rvcZoomLevel === AL2HMIBridge.RVCSource.ZoomLevelMax;
         if (yafcZoom === maxed) return;
@@ -208,6 +247,7 @@
     // No report in time: lay out whatever Ford actually shows. Never leaves the
     // cover up for good.
     function yafcReconcile() {
+        if (!yafcShown) return;
         yafcPendingView = "";
         var k = yafcViews[yafcViewKey].ford === yafcFordView ? yafcViewKey : "";
         for (var n in yafcViews) if (k === "" && yafcViews[n].ford === yafcFordView) k = n;
@@ -238,54 +278,68 @@
     property bool yafcUserPicked: false
     property bool yafcShown: false
     function yafcDefaultKey(front) {
-        var map = front ? { "front360": "front360" }
+        var map = front ? { "front360": "front360", "front": "front", "360": "front360only", "frontwide": "frontwide" }
                         : { "rear360": "rear360", "rear": "rear", "360": "full360", "rearwide": "wide" };
         var pref = front ? yafcFrontViewPref : yafcRearViewPref;
         return map[pref] !== undefined ? map[pref] : (front ? "front360" : "rear360");
     }
     function yafcApplyDefault(front, callFord) {
+        if (!yafcShown) return false;
         var key = yafcDefaultKey(front);
+        if (!yafcApplyLayout(key)) return false;
         var e = yafcViews[key];
-        if (!yafcPublishView(e)) return;
-        yafcViewKey = key;
-        yafcView = e.cfg;
-        yafcSensors = e.sensors === true;
-        yafcZoom = false;
-        yafcSyncZoom();
-        yafcLook(e);
         if (callFord && AL2HMIBridge.rvcSource.multicameraShowing !== e.ford)
             _hmirvcController.selectRVCView(e.ford);
+        return true;
     }
 
     function yafcVisibleChanged(vis) {
-        if (vis) {
-            yafcLoadConfig();
+        if (vis && !yafcShown) {
+            if (!yafcLoadConfig()) return;
             yafcShown = true;
+            yafcWasFront = showFrontCamera;
             yafcUserPicked = false;
-            // The stock zoom, camera-row and centred sensor controls are
-            // replaced by the YAFC row and sensor bay. Assigning the property
-            // breaks the stock binding for this popup instance.
-            zoomButton.visible = false;
-            cameraViewButtons.visible = false;
-            pdcImage.visible = false;
-            bottomContainer.source = "";
-            cancelButton.visible = yafcCancelShown;
-            textLabel.visible = showZoomButton && !yafcHideChrome;
+            if (!yafcApplyDefault(yafcWasFront, false)) {
+                yafcShown = false;
+                return;
+            }
             yafcDefaultTimer.restart();
-        } else {
+        } else if (!vis && yafcShown) {
             yafcPanelOpen = false;
             yafcDefaultTimer.stop();
-            yafcShown = false;
+            yafcZoomTimer.stop();
             yafcPendingView = "";
             yafcViewTimeout.stop();
             yafcCoverTimer.stop();
             yafcCover = false;
-            yafcUserPicked = false;
-            yafcApplyDefault(yafcWasFront, false);
+            yafcZoomSwitch = false;
+            // Keep the next opening default in RAM without changing Ford's zoom.
+            yafcPublishView(yafcViews[yafcDefaultKey(yafcWasFront)]);
+            yafcShown = false;
         }
     }
 
-    Component.onCompleted: { yafcLoadConfig(); yafcApplyDefault(false, false); }
+    Component.onCompleted: yafcVisibleChanged(visible)
+
+    // Keep the stock bindings intact when the popup is not in YAFC mode.
+    Binding { target: zoomButton; property: "visible"; value: false; when: yafcShown }
+    Binding { target: cameraViewButtons; property: "visible"; value: false; when: yafcShown }
+    Binding { target: pdcImage; property: "visible"; value: false; when: yafcShown }
+    Binding { target: bottomContainer; property: "source"; value: ""; when: yafcShown }
+    Binding {
+        target: container
+        property: "height"
+        value: _rVCPopupStyle.yafcPopupComponentHeight
+        when: yafcShown
+    }
+    Binding {
+        target: bottomContainer
+        property: "height"
+        value: UiTheme.styleRoot.navigationBarHeight + UiTheme.styleRoot.generalMarginBig * 2
+        when: yafcShown
+    }
+    Binding { target: cancelButton; property: "visible"; value: yafcCancelShown; when: yafcShown }
+    Binding { target: textLabel; property: "visible"; value: showZoomButton && !yafcHideChrome; when: yafcShown }
 
     onShowFrontCameraChanged: if (yafcShown) { yafcWasFront = showFrontCamera; if (showFrontCamera) yafcPanelOpen = false; }
 

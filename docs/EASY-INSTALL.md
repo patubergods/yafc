@@ -10,48 +10,52 @@
 This page is the short version: download a file, put it on a USB drive, plug it in. You do not
 need a build, a terminal or a laptop that can talk to the car.
 
-**Read this before you start.** YAFC is an unfinished community project. The design has been
-used on the developer's own vehicle, but this packaged installer has **not yet been run on a
-unit** - its checks were run on a normal computer. The rear camera is safety-critical: a failure can obscure or interrupt it. Install only
-while parked, and use it at your own risk. There is an undo, and it is on this page.
+**Read this before you start.** YAFC is an unfinished community project. The design was developed
+and tested on the developer's **2020 Ford Explorer ST** with the 10-inch portrait screen. Other
+SYNC 3 units in the same screen family may work, but compatibility is not guaranteed. This
+packaged installer has **not been run on a radio**; its checks were run on a computer. The rear
+camera is safety-critical: a failure can obscure or interrupt it. Install only while parked and
+at your own risk. Keep the uninstall zip handy.
 
 ## Before you begin
 
 Check every line. If one is missing, stop.
 
-- **A Ford SYNC 3 radio that already has the FMods jailbreak and installer** ([fmods.net](https://www.fmods.net/)).
-  YAFC does not install the jailbreak and does nothing without it. The jailbreak's USB hook is
-  what starts YAFC when you plug the drive in.
-- **A USB flash drive.** Use the kind of drive and the format you already use with the jailbreak.
-  Other SYNC 3 mod pages call for **exFAT**, and Ford's own SYNC update guide describes formatting
-  a drive the same way; YAFC has no format of its own, so follow what works for FMods today.
-  The YAFC files are small (about 75 KB). **Formatting erases the drive.** Back up what you want
-  to keep and check the drive's name and size before you format it.
-- **The car parked in an open area, the brake held, ignition on, SYNC running.**
-- **The files from this page:** the install zip, and keep the uninstall zip handy.
+- **A Ford SYNC 3 radio with the FMods jailbreak, USB installer and FMods Tools already set up**
+  ([fmods.net](https://www.fmods.net/)). YAFC does not install any of them. The FMods USB hook
+  starts YAFC when you plug in the drive. No fullscreen CarPlay or Android Auto mod is required.
+- **A USB flash drive.** Use the kind of drive and the format you already use with FMods. Ford's
+  SYNC update guides and some SYNC 3 mod pages recommend exFAT, but YAFC has no format of its own.
+  **Formatting erases the drive.** Back up your files and check the drive's name and size first.
+- **The car parked in an open area, brake held, ignition on and SYNC running.**
+- **The install and uninstall zips.** Keep the uninstall zip available in case you need it.
 
 ## Which file to use
 
+Get the install and uninstall zip for the same version from
+[GitHub Releases](https://github.com/patubergods/yafc/releases).
+
 | File | What it does |
 |---|---|
-| `YAFC-<version>-install.zip` | Installs YAFC for real. The picture changes. |
-| `YAFC-<version>-uninstall.zip` | Puts the car's own camera part back and forgets YAFC. |
+| `YAFC-<version>-install.zip` | Installs the camera library and HMI overlay. The camera layout and controls change. |
+| `YAFC-<version>-uninstall.zip` | Removes the HMI overlay and restores the car's own camera library if the installer preserved a copy. |
 
 ## Install
 
-1. **Put the files on the drive.** Unzip the file, then copy **everything inside it** to the
-   top level of the USB drive - the drive itself, not a folder on it.
-   - *Windows:* right-click the zip, **Extract All**, open the result, copy its contents to the drive.
-   - *Mac:* double-click the zip, open the result, copy its contents to the drive.
-   Wait until copying finishes, then **eject the drive safely** before you unplug it. You should
-   end up with `SyncMyMod`, `yafc-install.sh`, `yafc-payload`, `tools`,
-   `START-HERE.txt` and one file called `RUN-YAFC-INSTALL` on the drive.
+1. **Put the install files on the drive.** Unzip the install zip and copy **everything inside**
+   to the top level of the USB drive, not a folder on it.
+   - **Windows:** Right-click the zip, choose **Extract All**, then copy the extracted contents.
+   - **Mac:** Double-click the zip, then copy the extracted contents.
+
+   The drive should contain `SyncMyMod`, `yafc-install.sh`, `yafc-payload`, `tools`,
+   `START-HERE.txt` and `RUN-YAFC-INSTALL`. Wait for copying to finish, then safely eject the
+   drive before unplugging it.
 2. Park the car, switch the ignition on and wait for SYNC to finish starting.
 3. Plug the drive in and **leave it alone**. The radio does the work. How long this takes is
    **UNKNOWN** - nobody has measured it, so there is no number to wait for. Do not pull the drive
    out while it is working.
-4. Restart SYNC once: hold **Power + Seek-Right** for about 10 seconds.
-5. Look at the camera.
+4. Confirm `yafc-install/DONE` on the stick. If it says `FAILED`, read the log before trying again.
+5. Restart SYNC once: hold **Power + Seek-Right** for about 10 seconds. Check the camera while parked.
 
 ## How to tell whether it worked
 
@@ -59,7 +63,7 @@ Look on the USB drive:
 
 - `yafc-install/DONE` - it finished and its own checks passed.
 - `yafc-install/FAILED` - it stopped. `yafc-install/install.log` says why and what was left in
-  place. Send that log to whoever gave you the file.
+  place. `HMI only` means the slot passed its probe but the new overlay was not published.
 
 ## If it fails
 
@@ -68,43 +72,50 @@ the marker is renamed to `RUN-YAFC-INSTALL.running`, and it is deleted only when
 succeeded. A failed stick keeps the `.running` file, so every later insertion does nothing at all.
 That is deliberate: it stops a half-finished install from being repeated on every plug.
 
-So after a failure: read `install.log`, send it, and do not re-plug. To try again, delete
+So after a failure: read `install.log` and do not re-plug. To try again, delete
 `RUN-YAFC-INSTALL.running` from the drive (or unzip a fresh copy of the file) and start over at
 step 1. If the radio is not behaving, a soft reset - hold **Power + Seek-Right** for about 10
 seconds - restores the boot layering.
 
 ## Uninstall
 
-Unzip `YAFC-<version>-uninstall.zip` onto the drive and follow the same four steps. The car's own
-camera library is put back and the copy YAFC kept is deleted. The picture returns to how the car
-shipped.
+Repeat the install steps with `YAFC-<version>-uninstall.zip` on a clean drive, not over the
+install files. Look for `RUN-YAFC-REMOVE` instead of `RUN-YAFC-INSTALL`. The uninstall deletes
+the HMI overlay and, if the preserved copy of the car's own library exists, restores the
+library and removes that copy. Confirm `yafc-install/DONE`, then restart SYNC to reload the
+stock files.
 
 ## If the picture is wrong and you want it back now
 
-Use the uninstall file. There is also a kill switch that turns YAFC off without removing it, but
-it is written on the radio itself (`/fs/rwdata/yafc/DISABLE`) and needs the jailbreak's shell. If
-you cannot do that, the uninstall file is the way.
+Use the uninstall file. The kill switch also turns YAFC off without removing it. Arm
+`RUN-YAFC-DISABLE` or create `/fs/rwdata/yafc/DISABLE` in the jailbreak's shell, then restart
+SYNC. See [RECOVERY.md](RECOVERY.md) for details and HMI-only removal.
 
 ## Questions
 
-**What does it change?** One library in the camera's part of the radio, plus a small
-configuration file. It does not change the menus or the on-screen buttons.
+**What does it change?** It installs one camera library, seeds a configuration if missing, and
+builds an HMI overlay from the radio's own files. The overlay changes the camera controls and
+adds preferences to Camera Settings.
+Use the rear camera's plus button to open **Zoomed View**, and the minus button to return to
+Rear Only.
 
-**Can I undo it?** Yes. The uninstall file restores the car's own library. The kill switch turns
-the picture change off without removing anything.
+**What appears when SYNC starts?** On the development vehicle, fullscreen rear video appeared
+early, before SYNC finished starting. The 360 view, parking sensors and view-selection buttons
+appeared later as the interface loaded. That timing has not been established on other vehicles
+or with this packaged installer.
 
-**Does it touch the rear camera safety path?** It changes **how the camera picture is placed** on
-the screen. The factory library is kept beside YAFC's and is put back by the uninstall, and the
-kill switch exists for the picture alone. **UNPROVEN on a real unit:** the design has been used on
-the developer's own vehicle, but this packaged installer has not yet been run on another unit, so
-do not rely on the camera while maneuvering.
+**Can I undo it?** Yes. The uninstall file removes the overlay and restores the library when
+the saved copy exists. The kill switch stands both changes down after restart.
 
-**What USB drive and format?** The same drive and format the jailbreak already works with for you
-(see "Before you begin"). No special format of our own.
+**Does it touch the rear camera safety path?** It changes the picture placement and what the
+camera popup draws around it. Do not rely on it while maneuvering.
 
-**Is it tested?** The design has been used on the developer's own vehicle. This packaged installer has
-not yet been run on a unit; what is checked is listed in [TESTING.md](TESTING.md) and is
-**host-verified** - a computer, not a radio.
+**What USB drive and format?** Use the same type of drive and format that already work with
+FMods (see "Before you begin"). YAFC has no format of its own.
 
-**Where do I get help?** Send `yafc-install/install.log` and say which file you used. Nobody can
-tell you what went wrong from "it did not work".
+**Is it tested?** The design was used on one 2020 Explorer ST. The packaged installer has
+not been run on a radio. See [TESTING.md](TESTING.md) for the host checks and what remains unproven.
+
+**Where do the logs go?** The installer writes `yafc-install/install.log` to the USB drive.
+YAFC does not upload logs or collect telemetry. If you ask for help, share the log yourself
+and say which zip you used.

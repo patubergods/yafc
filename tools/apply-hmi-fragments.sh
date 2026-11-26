@@ -112,6 +112,7 @@ function parse(path, n,   r, line, i, text, p, body, inbody, ended) {
   } else if (H["edit"] == "append-after") {
     if (!("anchor" in H)) return fail(path ": header lacks anchor")
     if (trim(H["anchor"]) == "") return fail(path ": empty anchor")
+    if (body !~ /[^ \t\n]/) return fail(path ": empty append body")
   } else return fail(path ": unknown edit " H["edit"])
   F_id[n] = H["id"]; F_target[n] = H["target"]; F_edit[n] = H["edit"]
   F_find[n] = trim(H["find"]); F_repl[n] = trim(H["replace"]); F_anchor[n] = trim(H["anchor"]); F_body[n] = body
@@ -173,6 +174,7 @@ function apply1(n,   c, nb, i, k, p, lead) {
 
 BEGIN { if (mode == "list") {
   if (!parse(ARGV[1], 1)) { print "REFUSED: " ERR; exit 1 }
+  if (F_id[1] != id) { print "REFUSED: " ARGV[1] ": id must match the filename"; exit 1 }
   print F_target[1] "\t" F_id[1] "\t" ARGV[1]
   exit 0
 } }
@@ -205,7 +207,8 @@ END {
 LIST=
 for f in "$FDIR"/*.fragment; do
   [ -f "$f" ] || continue
-  line=$(awk -v mode=list "$AWKPROG" "$f") || { echo "$line"; exit 1; }
+  name=${f##*/}
+  line=$(awk -v mode=list -v id="${name%.fragment}" "$AWKPROG" "$f") || { echo "$line"; exit 1; }
   LIST="$LIST$line
 "
 done

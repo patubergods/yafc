@@ -2,7 +2,7 @@
 # id: popup-6-items
 # target: hmirvc/+10inchP/RVCPopup.qml
 # edit: append-after
-# anchor: height: _rVCPopupStyle.rvcPopupComponentHeight
+# anchor: rootPopupContents: [
 # end-header
 
             // View opener, top-left. It steps right while the stock cancel
@@ -10,7 +10,8 @@
             IconPushButton {
                 id: yafcViewButton
                 objectName: "RVCPopup_yafcViewButton"
-                visible: true
+                visible: yafcShown && !yafcCover
+                z: 1
                 iconId: "parkingfeatures/icon_switch_camera"
                 shape: HmiGui.Rectangular
                 size: HmiGui.VerySmall
@@ -22,7 +23,7 @@
                     leftMargin: yafcCancelShown ? 74 : 14
                 }
                 onClicked: yafcPanelOpen = !yafcPanelOpen
-            }
+            },
 
             // One row of stock view icons. Tapping a view closes the row.
             Item {
@@ -36,7 +37,7 @@
                 }
                 width: yafcViewRow.width
                 height: yafcViewRow.height
-                visible: yafcPanelOpen
+                visible: yafcShown && yafcPanelOpen && !yafcCover
                 z: 1000
 
                 Row {
@@ -64,14 +65,15 @@
                         }
                     }
                 }
-            }
+            },
 
             // Trailer plus: top-right of the video band. The minus is the same
             // button in the same place after Trailer is entered.
             IconPushButton {
                 id: yafcZoomInButton
                 objectName: "RVCPopup_yafcZoomInButton"
-                visible: !showFrontCamera && (yafcViewKey === "rear" || yafcViewKey === "rear360") && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                visible: yafcShown && !yafcCover && !showFrontCamera && (yafcViewKey === "rear" || yafcViewKey === "rear360") && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                z: 1
                 iconId: "shared/icon_mapzoom_in"
                 shape: HmiGui.Rectangular
                 size: (AL2HMIBridge.rvcSource.multiCamSoftButtons || showNonMultiCameraRearNormal) ? HmiGui.VerySmall : HmiGui.Tiny
@@ -83,12 +85,13 @@
                     rightMargin: 14
                 }
                 onClicked: yafcSelectView("zoom")
-            }
+            },
 
             IconPushButton {
                 id: yafcZoomOutButton
                 objectName: "RVCPopup_yafcZoomOutButton"
-                visible: yafcViewKey === "zoom" && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                visible: yafcShown && !yafcCover && yafcViewKey === "zoom" && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                z: 1
                 iconId: "shared/icon_mapzoom_out"
                 shape: HmiGui.Rectangular
                 size: (AL2HMIBridge.rvcSource.multiCamSoftButtons || showNonMultiCameraRearNormal) ? HmiGui.VerySmall : HmiGui.Tiny
