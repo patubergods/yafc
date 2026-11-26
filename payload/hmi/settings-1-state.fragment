@@ -5,16 +5,12 @@
 # anchor: objectName: "RVCSettings"
 # end-header
 
-    // yafc state. This page and the camera popup write one file, so each
+    // YAFC state. This page and the camera popup write one file, so each
     // save keeps every key it does not own. This page does not own `view`.
     property string yafcConfigPath: "file:///fs/rwdata/yafc/camera.conf"
-    property bool yafcEnabled: false
-    property bool yafcHideChrome: false
-    property string yafcLayout: "stock"
-    property string yafcBay: "450"
-    property string yafcBaySide: "left"
-    property string yafcBackground: "black"
     property string yafcMode: "pass"
+    property string yafcFrontView: "front360"
+    property string yafcRearView: "rear360"
 
     function yafcLoadConfig() {
         var xhr = new XMLHttpRequest();
@@ -30,13 +26,11 @@
                     if (eq < 0) continue;
                     var k = line.substring(0, eq).trim();
                     var v = line.substring(eq + 1).trim();
-                    if (k === "layout") yafcLayout = v;
                     if (k === "enabled") yafcEnabled = (v === "1");
                     if (k === "hide_chrome") yafcHideChrome = (v === "1");
-                    if (k === "bay_360") yafcBay = v;
-                    if (k === "bay_side") yafcBaySide = v;
                     if (k === "mode") yafcMode = v;
-                    if (k === "background") yafcBackground = v;
+                    if (k === "front_view") yafcFrontView = v;
+                    if (k === "rear_view") yafcRearView = v;
                 }
             }
         } catch (e) {
@@ -54,11 +48,9 @@
         own("version", 1);
         own("enabled", yafcEnabled ? "1" : "0");
         own("hide_chrome", yafcHideChrome ? "1" : "0");
-        own("layout", yafcLayout);
-        own("bay_360", yafcBay);
-        own("bay_side", yafcBaySide);
-        own("background", yafcBackground);
         own("mode", yafcMode);
+        own("front_view", yafcFrontView);
+        own("rear_view", yafcRearView);
 
         var keep = [];
         var get = new XMLHttpRequest();

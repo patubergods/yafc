@@ -1,5 +1,5 @@
 # yafc-fragment v1
-# id: panel-3-top
+# id: popup-3-top
 # target: hmirvc/+10inchP/RVCPopup.qml
 # edit: replace
 # find: topMargin: UiTheme.styleRoot.statusBarHeight

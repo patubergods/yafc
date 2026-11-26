@@ -35,6 +35,7 @@ static const char *map_path(const char *p)
 {
     const char *slash = strrchr(p, '/');
     if (slash && !strncmp(p, "/fs/rwdata/", 11)) return slash + 1;
+    if (slash && !strncmp(p, "/fs/tmpfs/", 10)) return slash + 1;
     return p;
 }
 static int fake_open(const char *p, int qflags, ...)
@@ -278,6 +279,16 @@ static void write_file(const char *name, const char *s)
     if (f) { fputs(s, f); fclose(f); }
 }
 static void write_conf(const char *s) { write_file("camera.conf", s); }
+#ifdef YAFC_SLOT
+static void reset_view_rects(void)
+{
+    static const int cs[4] = {0, 0, 438, 480}, cd[4] = {0, 71, 800, 527};
+    static const int bs[4] = {448, 0, 272, 480};
+    memcpy(g_cam_src, cs, sizeof cs); memcpy(g_cam_dst, cd, sizeof cd);
+    memcpy(g_bay_src, bs, sizeof bs); g_bay_dst[0] = g_bay_dst[1] = g_bay_dst[2] = g_bay_dst[3] = 0;
+    g_live_view = 0; g_view_compose = 1; g_geo_dirty = 1;
+}
+#endif
 static int exists(const char *name) { struct stat st; return stat(name, &st) == 0; }
 static int log_count(const char *s)
 {
@@ -324,12 +335,13 @@ static void reset_core(int keep_files)
     g_last_read_ms = 0;
 #ifdef YAFC_SLOT
     g_is_cam = 0; g_ident_busy = 0; g_ident_done = 0; g_ident_tries = 0; g_cam_win = 0;
-    g_inflight = 0; g_slot_dead = 0; g_boot_len = 0;
+    g_inflight = 0; g_slot_dead = 0; g_boot_len = 0; g_live_view = 0;
     get_win_cv = 0;
     arm_slot();
 #endif
     unlink("post.log");
     if (!keep_files) { unlink("DISABLE"); unlink("slot-inflight"); unlink("slot-strikes"); }
+    unlink("yafc-view");
 }
 #define reset_state() reset_core(0)
 
@@ -975,6 +987,46 @@ int main(void)
     check("S7 marker unwritable: no hero, logged", count("set", 0) == 0 && log_has("marker write failed"));
     check("S7 marker unwritable: frames still post", count("post", CAM) == 10);
     rmdir("slot-inflight");
+
+    /* ---- S9. RAM mailbox parser: valid, fallback, and bounds ---- */
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("S9 valid compose record applies all four rectangles",
+          g_live_view && g_view_compose && g_cam_src[1] == 6 && g_cam_dst[1] == 400 &&
+          g_bay_src[0] == 447 && g_bay_dst[2] == 0);
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("S9 compose=0 clears compose and keeps prior rectangles",
+          g_live_view && !g_view_compose && g_cam_dst[1] == 71 && g_cam_dst[2] == 800);
+    reset_state(); reset_view_rects();
+    read_live_view();
+    check("S9 missing mailbox falls back", !g_live_view && g_cam_dst[1] == 71);
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "1;0,6,720");
+    read_live_view();
+    check("S9 truncated record falls back", !g_live_view && g_cam_dst[1] == 71);
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "x;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("S9 garbage mode falls back", !g_live_view && g_cam_dst[1] == 71);
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "1;-1,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("S9 negative number falls back", !g_live_view && g_cam_src[0] == 0);
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "1;0,0,721,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("S9 oversized source rectangle falls back", !g_live_view && g_cam_src[2] == 438);
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "1;0,0,0,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("S9 zero non-bay dimension falls back", !g_live_view && g_cam_src[2] == 438);
+    reset_state(); reset_view_rects();
+    write_file("yafc-view", "1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\nold\n");
+    read_live_view();
+    check("S9 trailing bytes fall back", !g_live_view && g_cam_dst[1] == 71);
 
     /* the recorded hash matches the real binary when it is available */
     {

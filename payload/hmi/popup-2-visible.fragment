@@ -1,0 +1,7 @@
+# yafc-fragment v1
+# id: popup-2-visible
+# target: hmirvc/+10inchP/RVCPopup.qml
+# edit: append-after
+# anchor: onVisibleChanged: {
+# end-header
+        yafcVisibleChanged(visible);

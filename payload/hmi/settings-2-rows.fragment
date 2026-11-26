@@ -13,6 +13,7 @@
             toggled: yafcEnabled
             onToggleButtonClicked: {
                 yafcEnabled = !yafcEnabled;
+                yafcMode = yafcEnabled ? "compose" : "pass";
                 yafcSaveConfig();
             }
             infoButtonVisible: false
@@ -31,4 +32,52 @@
             }
             infoButtonVisible: false
             keepMoreInfoGap: false
+        },
+
+        Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("Default rear view")
+        },
+        RadioButtonGroup {
+            id: yafcRearRadio
+            width: parent.width
+            objectName: "RVCSettings_yafcRearRadio"
+            repeaterObjectName: "RVCSettings_yafcRearRadio_repeater"
+            moreInfoRadioButtonVisible: false
+            model: yafcRearActions
+            initialSourceValue: yafcRearView
+            onInitialSourceValueChanged: syncToSource()
+        },
+        HmiActionModel {
+            id: yafcRearActions
+            viewActive: root.shown
+            HmiAction { name: qsTr("Rear"); data: "rear"; onTriggered: { yafcRearView = "rear"; yafcSaveConfig() } }
+            HmiAction { name: qsTr("Rear + 360"); data: "rear360"; onTriggered: { yafcRearView = "rear360"; yafcSaveConfig() } }
+            HmiAction { name: qsTr("360 View"); data: "360"; onTriggered: { yafcRearView = "360"; yafcSaveConfig() } }
+            HmiAction { name: qsTr("Rear Wide"); data: "rearwide"; onTriggered: { yafcRearView = "rearwide"; yafcSaveConfig() } }
+        },
+
+        Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: qsTr("Default front view")
+        },
+        RadioButtonGroup {
+            id: yafcFrontRadio
+            width: parent.width
+            objectName: "RVCSettings_yafcFrontRadio"
+            repeaterObjectName: "RVCSettings_yafcFrontRadio_repeater"
+            moreInfoRadioButtonVisible: false
+            model: yafcFrontActions
+            initialSourceValue: yafcFrontView
+            onInitialSourceValueChanged: syncToSource()
+        },
+        HmiActionModel {
+            id: yafcFrontActions
+            viewActive: root.shown
+            HmiAction { name: qsTr("Front"); data: "front"; onTriggered: { yafcFrontView = "front"; yafcSaveConfig() } }
+            HmiAction { name: qsTr("Front + 360"); data: "front360"; onTriggered: { yafcFrontView = "front360"; yafcSaveConfig() } }
+            HmiAction { name: qsTr("360 View"); data: "360"; onTriggered: { yafcFrontView = "360"; yafcSaveConfig() } }
+            HmiAction { name: qsTr("Front Wide"); data: "frontwide"; onTriggered: { yafcFrontView = "frontwide"; yafcSaveConfig() } }
         },
