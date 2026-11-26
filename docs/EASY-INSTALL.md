@@ -15,14 +15,20 @@ used on the developer's own vehicle, but this packaged installer has **not yet b
 unit** - its checks were run on a normal computer. The rear camera is safety-critical: a failure can obscure or interrupt it. Install only
 while parked, and use it at your own risk. There is an undo, and it is on this page.
 
-## What you need
+## Before you begin
 
-- A radio that **already has the FMods jailbreak and installer** ([fmods.net](https://www.fmods.net/)).
+Check every line. If one is missing, stop.
+
+- **A Ford SYNC 3 radio that already has the FMods jailbreak and installer** ([fmods.net](https://www.fmods.net/)).
   YAFC does not install the jailbreak and does nothing without it. The jailbreak's USB hook is
   what starts YAFC when you plug the drive in.
-- A USB drive of the same kind you already use with the jailbreak - the one that works for FMods
-  today. Format it the way you normally format that drive. Nothing here needs a special format.
-- The car parked, ignition on, SYNC running.
+- **A USB flash drive.** Use the kind of drive and the format you already use with the jailbreak.
+  Other SYNC 3 mod pages call for **exFAT**, and Ford's own SYNC update guide describes formatting
+  a drive the same way; YAFC has no format of its own, so follow what works for FMods today.
+  The YAFC files are small (about 75 KB). **Formatting erases the drive.** Back up what you want
+  to keep and check the drive's name and size before you format it.
+- **The car parked in an open area, the brake held, ignition on, SYNC running.**
+- **The files from this page:** the install zip, and keep the uninstall zip handy.
 
 ## Which file to use
 
@@ -33,8 +39,12 @@ while parked, and use it at your own risk. There is an undo, and it is on this p
 
 ## Install
 
-1. **Unzip** the file onto the root of the USB drive - the drive itself, not a folder on it. You
-   should end up with `SyncMyMod`, `yafc-install.sh`, `yafc-payload`, `tools`,
+1. **Put the files on the drive.** Unzip the file, then copy **everything inside it** to the
+   top level of the USB drive - the drive itself, not a folder on it.
+   - *Windows:* right-click the zip, **Extract All**, open the result, copy its contents to the drive.
+   - *Mac:* double-click the zip, open the result, copy its contents to the drive.
+   Wait until copying finishes, then **eject the drive safely** before you unplug it. You should
+   end up with `SyncMyMod`, `yafc-install.sh`, `yafc-payload`, `tools`,
    `START-HERE.txt` and one file called `RUN-YAFC-INSTALL` on the drive.
 2. Park the car, switch the ignition on and wait for SYNC to finish starting.
 3. Plug the drive in and **leave it alone**. The radio does the work. How long this takes is
@@ -85,11 +95,12 @@ the picture change off without removing anything.
 
 **Does it touch the rear camera safety path?** It changes **how the camera picture is placed** on
 the screen. The factory library is kept beside YAFC's and is put back by the uninstall, and the
-kill switch exists for the picture alone. **UNPROVEN on a real unit:** nobody has driven with
-this, so do not rely on the camera while maneuvering.
+kill switch exists for the picture alone. **UNPROVEN on a real unit:** the design has been used on
+the developer's own vehicle, but this packaged installer has not yet been run on another unit, so
+do not rely on the camera while maneuvering.
 
-**What USB drive and format?** The same type of drive the jailbreak already works with, freshly
-formatted. No special format is needed or documented.
+**What USB drive and format?** The same drive and format the jailbreak already works with for you
+(see "Before you begin"). No special format of our own.
 
 **Is it tested?** The design has been used on the developer's own vehicle. This packaged installer has
 not yet been run on a unit; what is checked is listed in [TESTING.md](TESTING.md) and is
