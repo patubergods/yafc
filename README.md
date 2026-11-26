@@ -15,6 +15,9 @@ which is several seconds before the main SYNC interface is ready.
 **The rear camera is safety-critical.** A failure can obscure or interrupt it. Read
 [SAFETY.md](docs/SAFETY.md) and [RECOVERY.md](docs/RECOVERY.md) before a first trial.
 
+**Just want to install it?** The ready-made USB files and the four steps are in
+[EASY-INSTALL.md](docs/EASY-INSTALL.md). The rest of this page is the detail.
+
 ## What it does, in one paragraph
 
 The factory launcher puts a writable directory on the camera's library search path, and the

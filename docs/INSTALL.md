@@ -4,6 +4,9 @@ The installer runs on the unit, under the jailbreak's USB hook. It never runs fr
 a radio. Everything it needs is on the stick, and it arrives **unarmed**: the stick does nothing
 until you create one marker.
 
+Just want a file to put on a USB drive, with no build? Start at
+[EASY-INSTALL.md](EASY-INSTALL.md); this page is the detail behind it.
+
 ## Build
 
 ```
