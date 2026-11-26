@@ -1,9 +1,10 @@
 # YAFC — Yet Another Fullscreen Camera
 
 A fullscreen camera presentation for Ford SYNC 3 (QNX, ARMv7) that runs **inside the factory
-camera process** instead of replacing it. The camera picture is composed — one view on top,
-a second view beneath it, the factory warning text intact — from the moment the camera starts,
-which is several seconds before the main SYNC interface is ready.
+camera process** instead of replacing it. On the developer's 2020 Explorer ST, fullscreen rear
+video appeared early, before SYNC finished starting. The 360 view, parking sensors and
+view-selection buttons appeared later as the interface loaded. The packaged installer has not
+been run on a radio, and behavior on other vehicles is unproven.
 
 > **WARNING: use at your own risk.** YAFC is an unofficial, free hobby project with **no warranty,
 > no support and no liability**. It modifies your vehicle's SYNC 3 unit and its camera system, and
@@ -15,7 +16,7 @@ which is several seconds before the main SYNC interface is ready.
 **The rear camera is safety-critical.** A failure can obscure or interrupt it. Read
 [SAFETY.md](docs/SAFETY.md) and [RECOVERY.md](docs/RECOVERY.md) before a first trial.
 
-**Just want to install it?** The ready-made USB files and the four steps are in
+**Just want to install it?** The install and uninstall downloads and instructions are in
 [EASY-INSTALL.md](docs/EASY-INSTALL.md). The rest of this page is the detail.
 
 ## What it does, in one paragraph
@@ -30,28 +31,29 @@ library is preserved beside YAFC's under a second name, and the installer makes 
 unit: nothing Ford ships is redistributed here. See
 [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Install
+## Install from source
 
 1. `sh toolchain/build-slot.sh` and `sh toolchain/probe/build-probe.sh` — build the library and
    the loader probe (needs clang, lld, LLVM tools, Python 3, ARM cross GCC and binutils).
 2. `sh tools/make-usb.sh <mount-point>` — assemble the stick. It arrives **unarmed**.
-3. On the stick, create **one** marker: `RUN-YAFC-REHEARSE` first. That runs the whole install
-   path with the unit's own bytes, so nothing about the picture changes.
+3. On the stick, create **one** marker: `RUN-YAFC-REHEARSE` first. It rewrites the current slot
+   bytes and checks an HMI image without publishing it or changing settings.
 4. Insert the stick. The jailbreak's USB hook runs `SyncMyMod/autoinstall.sh`, which renames the
    marker and runs the installer. Read `yafc-install/install.log`, `DONE` or `FAILED`.
-5. When the rehearsal is clean, `RUN-YAFC-INSTALL` does it for real: it writes the library,
-   proves the pair loads with the probe **before** anything is rebooted, and puts the unit's own
-   library back if the probe fails. Then reboot and look at the camera.
+5. When rehearsal passes, `RUN-YAFC-INSTALL` writes and probes the library, then builds and
+   publishes the HMI overlay from the unit's own stock files. If the probe fails, it puts the
+   original library back. Check the receipt, reboot, and inspect the camera while parked.
 
 Full details, including the exact write order and what each receipt means:
 [INSTALL.md](docs/INSTALL.md).
 
 ## Undo
 
-- **Fast:** create `/fs/rwdata/yafc/DISABLE` on the unit (or arm `RUN-YAFC-DISABLE`). The
-  library refuses to act and the factory picture returns on the next camera start.
-- **Complete:** arm `RUN-YAFC-REMOVE`. It restores the unit's own library and deletes the
-  preserved copy.
+- **Fast:** create `/fs/rwdata/yafc/DISABLE` on the unit (or arm `RUN-YAFC-DISABLE`) and
+  restart SYNC so the library and popup stand down.
+- **HMI only:** arm `RUN-YAFC-REMOVE-HMI`. It deletes the overlay and leaves the library alone.
+- **Complete:** arm `RUN-YAFC-REMOVE`. It deletes the overlay before restoring the unit's own
+  library if a preserved copy exists. Restart SYNC to reload the stock files.
 - **A stuck unit:** a soft reset (hold Power + Seek-Right about ten seconds) restores the boot
   layering. Details in [RECOVERY.md](docs/RECOVERY.md).
 
@@ -84,11 +86,11 @@ Host tests do not establish loader behaviour, live video or vehicle safety.
 
 ## Requires FMods, which is not included
 
-YAFC runs on a unit that already has the **FMods jailbreak and installer**
-([fmods.net](https://www.fmods.net/)). The jailbreak's USB hook is what runs this project's
-`SyncMyMod/autoinstall.sh`. Those are other people's work, under their own terms. Nothing from
-FMods is in this repository: no jailbreak files, no Installer, no FMods Tools, no SyncDB mod.
-This project is not affiliated with or endorsed by FMods or Ford. See [NOTICE](NOTICE).
+YAFC runs on a unit with the **FMods jailbreak, USB installer and FMods Tools** already set up
+([fmods.net](https://www.fmods.net/)). The FMods USB hook runs this project's
+`SyncMyMod/autoinstall.sh`. No fullscreen CarPlay or Android Auto mod is required. Nothing from
+FMods is included here. This project is not affiliated with or endorsed by FMods or Ford. See
+[NOTICE](NOTICE).
 
 ## Scope and licence
 

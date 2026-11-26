@@ -38,7 +38,7 @@
                 x: modelData[0]; y: modelData[1]
                 width: modelData[2]; height: modelData[3]
                 color: "black"
-                visible: showZoomButton && yafcHideChrome
+                visible: yafcShown && showZoomButton && yafcHideChrome
             }
         },
         // Opaque cover while a cross-stream switch settles.
@@ -46,7 +46,7 @@
             objectName: "RVCPopup_yafcCover"
             x: 0; y: 0; width: 800; height: 1240
             color: "black"
-            visible: yafcCover
+            visible: yafcShown && yafcCover
         },
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -54,7 +54,7 @@
             text: qsTr("Please wait...")
             color: "white"
             font.pixelSize: 40
-            visible: yafcCover
+            visible: yafcShown && yafcCover
         },
         // Sensor bay: an opaque black panel with a second stock sensor
         // component. It is declared before the stock items so they draw above
@@ -62,7 +62,7 @@
         Rectangle {
             id: yafcSensorBay
             objectName: "RVCPopup_yafcSensorBay"
-            visible: showZoomButton && yafcSensors && (show360View || yafcViewKey === "front" || yafcViewKey === "rear" || yafcViewKey === "zoom" || ((yafcViewKey === "wide" || yafcViewKey === "frontwide") && showSplitView))
+            visible: yafcShown && showZoomButton && yafcSensors && (show360View || yafcViewKey === "front" || yafcViewKey === "rear" || yafcViewKey === "zoom" || ((yafcViewKey === "wide" || yafcViewKey === "frontwide") && showSplitView))
             x: yafcHideChrome ? yafcSen[0] : 430
             y: yafcHideChrome ? yafcSen[1] : 628
             width: yafcHideChrome ? yafcSen[2] : 370
@@ -89,5 +89,5 @@
             font.pixelSize: 22
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            visible: showZoomButton && yafcHideChrome
+            visible: yafcShown && showZoomButton && yafcHideChrome
         },

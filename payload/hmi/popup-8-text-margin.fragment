@@ -3,5 +3,5 @@
 # target: hmirvc/+10inchP/RVCPopup.qml
 # edit: replace
 # find: topMargin: UiTheme.styleRoot.generalMarginSmaller + UiTheme.styleRoot.generalMarginBig
-# replace: bottomMargin: UiTheme.styleRoot.generalMarginBig
+# replace: topMargin: yafcShown ? UiTheme.styleRoot.generalMarginBig : UiTheme.styleRoot.generalMarginSmaller + UiTheme.styleRoot.generalMarginBig
 # end-header

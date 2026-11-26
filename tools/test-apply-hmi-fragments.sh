@@ -36,7 +36,7 @@ make_stage() {
              "$d/fordhmi/qml/hmisettings/driverassistance/+10inchP" \
              "$d/fordhmi/qml/themes/ford-10P-MY20/styles" \
              "$d/fordhmi/qml/+10inchP"
-    printf 'ParentStyles.RVCPopupStyle {\r\n   rvcPopupComponentHeight: 480\r\n}\r\n' \
+    printf 'ParentStyles.RVCPopupStyle {\n   rvcPopupComponentHeight: 480\n}\n' \
         > "$d/fordhmi/qml/$T1"
     cat > "$d/fordhmi/qml/$T2" <<'EOF'
 RVCBasePopup {
@@ -45,15 +45,20 @@ RVCBasePopup {
     }
     rootPopupContents: [
         Item {
+            id: container
             anchors {
                 topMargin: UiTheme.styleRoot.statusBarHeight
             }
             height: _rVCPopupStyle.rvcPopupComponentHeight
             IconPushButton { id: zoomButton }
+            Item { id: cameraViewButtons }
+            Item { id: pdcImage }
+            IconPushButton { id: cancelButton }
         },
         HmiImage {
             id: bottomContainer
             anchors {
+                top:container.bottom
                 bottomMargin:  ((apaCsiActive || fapaActive) && isvalidAPACSISystemState()) ? 0 : UiTheme.styleRoot.navigationBarHeight
             }
             RVCTextLabel {
@@ -76,6 +81,7 @@ PictureBookView {
 EOF
     cat > "$d/fordhmi/qml/$T4" <<'EOF'
 Item {
+    id: root
     property bool fullScreenTransparentPopupStacked: false
     StatusBar {
         visible: ViewController.activeViewMode !== HmiGui.FarewellViewMode
@@ -132,18 +138,23 @@ balanced() {
 
 # body_of FILE: everything after the end-header line.
 body_of() {
-    awk 'seen { print } /^# end-header$/ { seen = 1 }' "$1"
+    awk '{ sub(/\r+$/, "") } seen { print } /^# end-header$/ { seen = 1 }' "$1"
 }
 
 # --- case 1: the real fragment set applies to all four targets -------------
 S=$WORK/c1/stage; make_stage "$S"
 rc=$(run "$S" "$FDIR")
 [ "$rc" = 0 ] && ok "full set exits 0" || no "full set exit $rc: $(cat "$WORK/out.txt")"
-grep -q 'rvcPopupComponentHeight: 1208' "$S/fordhmi/qml/$T1" \
-    && ok "style replace applied" || no "style replace missing"
+grep -Fq 'rvcPopupComponentHeight: 480' "$S/fordhmi/qml/$T1" \
+    && grep -Fq 'property int yafcPopupComponentHeight: 1208' "$S/fordhmi/qml/$T1" \
+    && ok "YAFC height added without replacing stock height" || no "incorrect style height"
 grep -q 'yafcViews' "$S/fordhmi/qml/$T2" && ok "popup state inserted" || no "popup state missing"
 grep -q 'yafcCover' "$S/fordhmi/qml/$T2" && ok "cover inserted" || no "cover missing"
 grep -q 'yafcSelectView' "$S/fordhmi/qml/$T2" && ok "selector inserted" || no "selector missing"
+grep -Fq 'top: yafcShown ? undefined : container.bottom' "$S/fordhmi/qml/$T2" \
+    && ok "bottom strip anchor guarded" || no "bottom strip anchor not guarded"
+grep -Fq 'topMargin: yafcShown ? UiTheme.styleRoot.generalMarginBig : UiTheme.styleRoot.generalMarginSmaller + UiTheme.styleRoot.generalMarginBig' "$S/fordhmi/qml/$T2" \
+    && ok "stock text margin guarded" || no "stock text margin not guarded"
 grep -q 'yafcRearRadio' "$S/fordhmi/qml/$T3" && ok "settings rows inserted" || no "settings rows missing"
 grep -q 'yafcCamFull' "$S/fordhmi/qml/$T4" && ok "root property inserted" || no "root property missing"
 balanced "$S/fordhmi/qml/$T1" && balanced "$S/fordhmi/qml/$T2" \
@@ -161,14 +172,16 @@ S=$WORK/c3/stage; F=$WORK/c3/frag; make_stage "$S"; cp -R "$FDIR" "$F"
 sed -i 's/^# anchor: property int aPAPopupWidth: UiTheme.styleRoot.applicationWidth$/# anchor: property int aPAPopupWidth: 0/' "$F/popup-1-state.fragment"
 before=$(cksum "$S/fordhmi/qml/$T2")
 rc=$(run "$S" "$F")
-[ "$rc" = 1 ] && ok "missing anchor exits 1" || no "missing anchor exit $rc"
+[ "$rc" = 1 ] && grep -Fq 'popup-1-state: anchor occurs 0 times' "$WORK/out.txt" \
+    && ok "missing anchor refused" || no "missing anchor exit $rc: $(cat "$WORK/out.txt")"
 [ "$before" = "$(cksum "$S/fordhmi/qml/$T2")" ] && ok "refused file byte-identical" || no "refused file changed"
 
 # --- case 4: a duplicated anchor refuses --------------------------------
 S=$WORK/c4/stage; make_stage "$S"
 printf '    property int aPAPopupWidth: UiTheme.styleRoot.applicationWidth\r\n' >> "$S/fordhmi/qml/$T2"
 rc=$(run "$S" "$FDIR")
-[ "$rc" = 1 ] && ok "duplicate anchor exits 1" || no "duplicate anchor exit $rc"
+[ "$rc" = 1 ] && grep -Fq 'popup-1-state: anchor occurs 2 times' "$WORK/out.txt" \
+    && ok "duplicate anchor refused" || no "duplicate anchor exit $rc: $(cat "$WORK/out.txt")"
 
 # --- case 5: no fragment body may contain a forbidden token --------------
 # The legacy prefix is assembled at run time so this file does not carry it.
@@ -181,6 +194,20 @@ for f in "$FDIR"/*.fragment; do
     fi
 done
 [ "$bad" = 0 ] && ok "no forbidden token in fragment bodies" || no "forbidden token found"
+
+# --- case 9: named fragment cannot be replaced with another fragment --------
+S=$WORK/c9/stage; F=$WORK/c9/frag; make_stage "$S"; cp -R "$FDIR" "$F"
+cp "$F/popup-1-state.fragment" "$F/popup-2-visible.fragment"
+rc=$(run "$S" "$F")
+[ "$rc" = 1 ] && grep -q 'id must match the filename' "$WORK/out.txt" \
+    && ok "misnamed fragment refused" || no "misnamed fragment exit $rc: $(cat "$WORK/out.txt")"
+
+# --- case 10: an append header alone cannot stand in for the real body ------
+S=$WORK/c10/stage; F=$WORK/c10/frag; make_stage "$S"; cp -R "$FDIR" "$F"
+sed -i '/^# end-header\r*$/q' "$F/popup-1-state.fragment"
+rc=$(run "$S" "$F")
+[ "$rc" = 1 ] && grep -q 'empty append body' "$WORK/out.txt" \
+    && ok "blank append refused" || no "blank append exit $rc: $(cat "$WORK/out.txt")"
 
 echo
 echo "passed $pass, failed $fail"

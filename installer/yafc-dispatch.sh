@@ -5,9 +5,10 @@
 # runs on every insertion. With no marker it does nothing at all, so the stick
 # cannot change the unit by accident.
 #
-#   RUN-YAFC-INSTALL    put YAFC's library in the camera's slot
+#   RUN-YAFC-INSTALL    put YAFC's library in the camera's slot and publish the HMI image
 #   RUN-YAFC-REHEARSE   the same path with the unit's own bytes (no picture change)
-#   RUN-YAFC-REMOVE     put the unit's own library back and forget YAFC
+#   RUN-YAFC-REMOVE     put the unit's own library back, forget YAFC, delete the HMI image
+#   RUN-YAFC-REMOVE-HMI delete the HMI image only; the library is untouched
 #   RUN-YAFC-DISABLE    write the kill switch only; touches nothing under /fs/mp
 #
 # A marker may sit at the stick root or in SyncMyMod/. Arm ONE at a time: more
@@ -29,7 +30,8 @@ found=0
 mode=
 marker=
 for spec in "RUN-YAFC-INSTALL:install" "RUN-YAFC-REHEARSE:rehearse" \
-            "RUN-YAFC-REMOVE:remove" "RUN-YAFC-DISABLE:disable"; do
+            "RUN-YAFC-REMOVE:remove" "RUN-YAFC-REMOVE-HMI:remove-hmi" \
+            "RUN-YAFC-DISABLE:disable"; do
   name=${spec%%:*}
   want=${spec#*:}
   for dir in "$USB" "$USB/SyncMyMod"; do

@@ -144,7 +144,7 @@ and re-read in the slot build before the real post every `reread` posts (`reread
 | `stats` | `1` logs a rate line about every ten seconds |
 | `cam_src`, `cam_dst` | the camera's source region and destination rectangle |
 | `sen_dst` | the sensor area |
-| `tail_dst` | the trailer view rectangle |
+| `tail_dst` | reserved rectangle; parsed but unused |
 | `bay_id`, `bay_src`, `bay_dst` | the bay: ID string on/off, its source region, its rectangle |
 | `cover_ms` | HMI black-cover dwell in milliseconds; read by the fragments, not the library |
 
@@ -152,7 +152,7 @@ Values are validated against a small set and the built-in defaults cover anythin
 of range, so a damaged file falls back safely. The shipped default is
 `payload/config/camera.conf`.
 
-**UNPROVEN:** the values for the 360, Trailer and ship-config shapes on a public build; the
+**UNPROVEN:** the values for the 360, Zoomed View and ship-config shapes on a public build; the
 public fragments and library have never been applied to a radio.
 
 ## The failure counter
@@ -172,16 +172,16 @@ known restore, is the next evidence step ([TESTING.md](TESTING.md)).
 
 ## The installer
 
-`installer/yafc-install.sh` runs on the unit under the jailbreak's USB hook, one worker with four
-modes armed by exactly one marker at the stick root: `RUN-YAFC-REHEARSE`, `RUN-YAFC-INSTALL`,
-`RUN-YAFC-REMOVE`, `RUN-YAFC-DISABLE`. Every write mode makes the preserved copy of the unit's
-own library once, reduces the writable mount, writes, restores the mount, runs the loader probe
-and puts the unit's own library back if the probe fails, then re-checks the recovery scripts and
-writes a receipt.
+`installer/yafc-install.sh` runs under the jailbreak's USB hook. Exactly one marker selects a
+mode: `RUN-YAFC-REHEARSE`, `RUN-YAFC-INSTALL`, `RUN-YAFC-REMOVE`, `RUN-YAFC-REMOVE-HMI`, or
+`RUN-YAFC-DISABLE`. Install preserves the unit's own library, probes the replacement, and rolls
+the library back if the probe fails. It builds the HMI image from the unit's own stock files
+and publishes only a verified image. Rehearsal writes the current slot bytes and checks an HMI
+image without publishing it. Removal replays only the mount layers that remain. See the
+[write order and receipts](INSTALL.md).
 
-**host-verified:** every mode, every refusal, and a rehearsal that writes the unit's own bytes
-through the real path (`python3 -I tools/test-install.py`, all assertions pass).
-**UNPROVEN:** any run on a unit from this repository.
+Host tests cover these paths with mock mounts. Any run on a unit from this repository is
+**UNPROVEN**.
 
 ## See also
 
