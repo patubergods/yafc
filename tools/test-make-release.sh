@@ -1,6 +1,6 @@
 #!/bin/sh
 # Host test for make-release.sh. It runs the assembly with a stub payload
-# (YAFC_SKIP_BUILD=1), so it needs no cross toolchain, and checks the three zips:
+# (YAFC_SKIP_BUILD=1), so it needs no cross toolchain, and checks the two zips:
 # one marker each and the right one, the stick layout at the zip root, no wrapper
 # directory, no marker left running, no private token in the text, START-HERE.txt
 # short and honest, and SHA256SUMS that verify. It builds twice and compares the
@@ -21,7 +21,7 @@ WORK=$(mktemp -d) || { echo "setup: mktemp failed"; exit 2; }
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
 mkdir -p "$WORK/bin"
-printf 'stub slot library\n' > "$WORK/bin/libyafc.so"
+printf 'stub slot library with /fs/tmpfs/yafc-view\n' > "$WORK/bin/libyafc.so"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/slotprobe"
 chmod 755 "$WORK/bin/slotprobe"
 
@@ -36,6 +36,8 @@ build() {
     YAFC_OUT=$1 sh "$MAKE" 2.3.4 > "$WORK/build.log" 2>&1
 }
 
+mkdir -p "$WORK/a" || exit 2
+: > "$WORK/a/YAFC-2.3.4-rehearse.zip" || exit 2
 if build "$WORK/a"; then ok "make-release.sh assembles with a stub payload"; else
   no "make-release.sh assembles with a stub payload"; sed 's/^/     /' "$WORK/build.log"; fi
 if build "$WORK/b"; then ok "make-release.sh runs twice"; else
@@ -54,10 +56,17 @@ def bad(msg):
 def good(msg):
     print("ok   " + msg)
 
-VARIANTS = {"install": "INSTALL", "uninstall": "REMOVE", "rehearse": "REHEARSE"}
+VARIANTS = {"install": "INSTALL", "uninstall": "REMOVE"}
 FORBIDDEN = re.compile(r"\bpat\b|PAT_|pat-rvc|patcam")
 HOSTPATH = re.compile(r"/home/|/Users/|/mnt/c/|[A-Za-z]:[\\/](?:Users|home|Windows)")
 TEXT_MAX = 25
+
+expected_zips = {"YAFC-2.3.4-%s.zip" % v for v in VARIANTS}
+actual_zips = {name for name in os.listdir(dist) if name.endswith(".zip")}
+if actual_zips != expected_zips:
+    bad("release zip set: %s" % sorted(actual_zips))
+else:
+    good("release contains only install and uninstall zips")
 
 names = {}
 blobs = {}
@@ -107,6 +116,18 @@ for variant, entries in names.items():
         bad("%s zip has no HMI fragment" % variant)
     else:
         good("%s zip has HMI fragments" % variant)
+    payload_sums = files.get("yafc-payload/SHA256SUMS", b"").decode("utf-8").splitlines()
+    payload_hashes = {path: digest for digest, path in
+                      (line.split(None, 1) for line in payload_sums)}
+    covered = {"SyncMyMod/autoinstall.sh", "yafc-install.sh", "tools/apply-hmi-fragments.sh",
+               "yafc-payload/libyafc.so", "yafc-payload/slotprobe", "yafc-payload/camera.conf"}
+    covered.update(n for n in entries if n.startswith("yafc-payload/hmi/"))
+    if set(payload_hashes) != covered or any(
+            path not in files or hashlib.sha256(files[path]).hexdigest() != digest
+            for path, digest in payload_hashes.items()):
+        bad("%s zip payload SHA256SUMS does not match packaged files" % variant)
+    else:
+        good("%s zip payload SHA256SUMS includes and verifies all HMI fragments" % variant)
 
     start = files.get("START-HERE.txt", b"").decode("utf-8", "replace")
     lines = start.splitlines()
@@ -118,8 +139,12 @@ for variant, entries in names.items():
         bad("%s START-HERE.txt does not open with the WARNING block" % variant)
     else:
         good("%s START-HERE.txt opens with the WARNING block" % variant)
-    for phrase in ("NEVER been tested", "FMods", "UNKNOWN", "parked", "at your own risk",
-                   "warranty", "DISCLAIMER.md"):
+    phrases = ("used only on a 2020 Explorer ST", "not yet field-tested", "FMods",
+               "UNKNOWN", "parked", "at your own risk", "warranty", "DISCLAIMER.md")
+    if variant == "install":
+        phrases += ("fullscreen rear video appeared early", "The 360 view",
+                    "parking sensors and view-selection buttons appeared later")
+    for phrase in phrases:
         if phrase not in start:
             bad("%s START-HERE.txt lacks %r" % (variant, phrase))
     if "RUN-YAFC-%s.running" % VARIANTS[variant] not in start:
@@ -151,11 +176,10 @@ else:
     for line in open(sums, encoding="utf-8"):
         digest, _, name = line.rstrip("\n").partition("  ")
         listed[name] = digest
-    want = {"YAFC-2.3.4-%s.zip" % v for v in VARIANTS}
-    if set(listed) != want:
+    if set(listed) != expected_zips:
         bad("SHA256SUMS lists %s" % sorted(listed))
     else:
-        good("SHA256SUMS lists the three zips")
+        good("SHA256SUMS lists the two zips")
     for name, digest in sorted(listed.items()):
         p = os.path.join(dist, name)
         real = hashlib.sha256(open(p, "rb").read()).hexdigest() if os.path.isfile(p) else "missing"

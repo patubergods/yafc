@@ -53,10 +53,11 @@ on them, or that any problem will ever be fixed. Features can change or disappea
 
 ## Not tested on every vehicle
 
-The public edition has not been run on a vehicle. Parts of the design were tried on one radio in
-the owner's private build; see [STATUS.md](STATUS.md) for what is proven and what is not. Other
-units, firmware versions and models can behave differently, and a wrong match can break things.
-Keep your own backups and know your way back **before** you start ([RECOVERY.md](RECOVERY.md)).
+The design has been used only on the developer's 2020 Explorer ST, with private tooling. That is
+one vehicle, one radio and one firmware. This packaged installer has not been run on a radio.
+See [STATUS.md](STATUS.md) for what is proven and what is not. Other units, firmware versions and
+models can behave differently, and a wrong match can break things. Keep your own backups and
+know your way back **before** you start ([RECOVERY.md](RECOVERY.md)).
 
 ## Third-party software
 

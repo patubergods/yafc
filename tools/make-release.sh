@@ -1,11 +1,11 @@
 #!/bin/sh
-# Build the three ready-to-use release zips: install, uninstall, rehearse.
+# Build the two ready-to-use release zips: install and uninstall.
 #
 #   sh tools/make-release.sh [version]
 #
 # Runs in WSL Ubuntu (docs/BUILD.md). It builds the library and the probe, stages
 # a stick with tools/make-usb.sh, arms ONE marker on a fresh copy per variant, and
-# writes YAFC-<version>-{install,uninstall,rehearse}.zip plus SHA256SUMS into dist/.
+# writes YAFC-<version>-{install,uninstall}.zip plus SHA256SUMS into dist/.
 # The zip root is the stick root, so unzipping onto a USB drive root is the whole
 # job. Nothing is committed: zips are attached to a GitHub release (docs/RELEASE.md).
 #
@@ -51,24 +51,20 @@ chmod 755 "$WORK/repo/toolchain/probe/bin/slotprobe"
 
 # start-here VARIANT: the one page a reader sees before anything else.
 start_here() {
-  variant=$1
-  case "$variant" in
-    install) MARK=RUN-YAFC-INSTALL ;;
-    uninstall) MARK=RUN-YAFC-REMOVE ;;
-    rehearse) MARK=RUN-YAFC-REHEARSE ;;
-  esac
-  case "$variant" in
-    install) what="Installs the YAFC camera library. The picture changes. The rear camera safety
-path is UNPROVEN on a real unit." ;;
-    uninstall) what="Puts the unit's own camera library back and forgets YAFC. The picture
-returns to how the car shipped." ;;
-    rehearse) what="Changes no picture. Runs the whole install with the unit's own bytes,
-to prove the path works on this radio." ;;
-  esac
-  case "$variant" in
-    install) undo="Use YAFC-$VERSION-uninstall.zip the same way." ;;
-    uninstall) undo="Nothing to undo. Install YAFC again with YAFC-$VERSION-install.zip." ;;
-    rehearse) undo="Nothing to undo; the picture never changed. Install with YAFC-$VERSION-install.zip." ;;
+  case "$1" in
+    install)
+      MARK=RUN-YAFC-INSTALL
+      what="Installs the YAFC camera library and HMI overlay. On the development vehicle,
+fullscreen rear video appeared early, before SYNC finished starting. The 360 view,
+parking sensors and view-selection buttons appeared later as the interface loaded."
+      undo="Use YAFC-$VERSION-uninstall.zip on a clean drive."
+      ;;
+    uninstall)
+      MARK=RUN-YAFC-REMOVE
+      what="Removes the YAFC HMI overlay and restores the unit's own camera library
+if the preserved copy exists. Restart SYNC to reload the stock files."
+      undo="Install YAFC again with YAFC-$VERSION-install.zip."
+      ;;
   esac
   cat <<EOF
 WARNING: unofficial free hobby project, use at your own risk. No warranty, express or
@@ -76,7 +72,7 @@ implied. No support. It may brick the unit or show a wrong or missing camera pic
 We are not responsible for accidents, damage, injury or a voided warranty. Off-road,
 parked, closed-course use only; never rely on it to decide whether it is safe to move.
 If you do not agree, do not use it. Full text: docs/DISCLAIMER.md on GitHub.
-YAFC fullscreen camera for SYNC 3. The public edition has NEVER been tested on a car.
+YAFC for SYNC 3. Design used only on a 2020 Explorer ST; this installer is not yet field-tested.
 
 WHAT THIS STICK DOES
 $what
@@ -86,10 +82,9 @@ The FMods jailbreak must already be on the radio; YAFC does not install it.
 Install only while parked.
 
 STEPS
-1. Unzip onto the root of a USB drive you have just formatted.
-2. Park, ignition on, SYNC running.
-3. Plug it in and wait. How long this takes is UNKNOWN (not measured).
-4. Restart SYNC once: hold Power + Seek-Right about 10 seconds.
+1. Back up the USB drive. Formatting erases it. Unzip onto the fresh drive's root.
+2. Park, turn the ignition on, wait for SYNC, then plug it in. Install time is UNKNOWN.
+3. Confirm yafc-install/DONE, then restart SYNC: hold Power + Seek-Right about 10 seconds.
 
 DID IT WORK? yafc-install/DONE = worked, yafc-install/FAILED = stopped. If it failed
 send yafc-install/install.log. Do not re-plug repeatedly: a failed request is kept
@@ -124,11 +119,10 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_STORED) as z:
 PY
 }
 
-for variant in install uninstall rehearse; do
+for variant in install uninstall; do
   case "$variant" in
     install) marker=RUN-YAFC-INSTALL ;;
     uninstall) marker=RUN-YAFC-REMOVE ;;
-    rehearse) marker=RUN-YAFC-REHEARSE ;;
   esac
   dest=$WORK/stick-$variant
   sh "$WORK/repo/tools/make-usb.sh" "$dest" >/dev/null
@@ -142,13 +136,14 @@ for variant in install uninstall rehearse; do
   echo "made YAFC-$VERSION-$variant.zip ($marker armed)"
 done
 
-( cd "$OUT" && sha256sum "YAFC-$VERSION-install.zip" "YAFC-$VERSION-uninstall.zip" \
-    "YAFC-$VERSION-rehearse.zip" > SHA256SUMS )
+# Do not leave an obsolete archive from an earlier build of the same version.
+rm -f "$OUT/YAFC-$VERSION-rehearse.zip"
+( cd "$OUT" && sha256sum "YAFC-$VERSION-install.zip" "YAFC-$VERSION-uninstall.zip" > SHA256SUMS )
 
 rm -rf "$WORK"
 echo
 echo "Release $VERSION in $OUT:"
-( cd "$OUT" && ls -l "YAFC-$VERSION"-*.zip && cat SHA256SUMS )
+( cd "$OUT" && ls -l "YAFC-$VERSION-install.zip" "YAFC-$VERSION-uninstall.zip" && cat SHA256SUMS )
 echo
 echo "UNPROVEN: no zip built here has been run on a radio. Read docs/EASY-INSTALL.md"
 echo "before you attach one to a release."

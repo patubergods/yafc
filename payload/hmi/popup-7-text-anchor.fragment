@@ -2,6 +2,6 @@
 # id: popup-7-text-anchor
 # target: hmirvc/+10inchP/RVCPopup.qml
 # edit: replace
-# find: top : cameraViewButtons.bottom
-# replace: bottom: parent.bottom
+# find: top:container.bottom
+# replace: top: yafcShown ? undefined : container.bottom
 # end-header
