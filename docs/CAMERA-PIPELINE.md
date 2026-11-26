@@ -100,11 +100,11 @@ fragments and the installer, and the library ignores them; one file has three co
 | Key | Read by | Shipped value |
 |---|---|---|
 | `version` | installer | `1` |
-| `enabled` | HMI | `0` |
+| `enabled` | interposer (once, at camera start) and HMI | `1` |
 | `layout` | installer | `stock` |
 | `bay_360`, `bay_side`, `background` | HMI | `450`, `left`, `black` |
 
-The interposer reads only its own keys; boot and interface settings have distinct consumers.
+The interposer reads only its own keys (and `enabled`, once at camera start: `0` means stock); boot and interface settings have distinct consumers.
 Its configured view is not proof of the actual incoming camera state.
 An unreadable or oversized configuration can retain previous interposer state.
 Do not assume that every invalid setting selects factory presentation.

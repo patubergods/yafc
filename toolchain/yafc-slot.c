@@ -1006,6 +1006,28 @@ static int exe_text_ok(void)
     return h == SLOT_TEXT_HASH;
 }
 
+/* camera.conf "enabled=0" keeps the hero off (stock behaviour). Absent or any
+ * other value means on. Read once at start; a toggle takes effect next boot. */
+static int conf_enabled_off(void)
+{
+    char buf[CONF_MAX];
+    long n;
+    char *p = buf;
+    int fd = open(CONF_PATH, 0);
+    if (fd < 0) fd = open("camera.conf", 0);
+    if (fd < 0) return 0;
+    n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0) return 0;
+    buf[n] = 0;
+    while (*p) {
+        if (starts_with(p, "enabled=")) return p[8] == '0';
+        while (*p && *p != '\n') p++;
+        if (*p) p++;
+    }
+    return 0;
+}
+
 static void slot_init(void)
 {
     int pid = getpid(), ident = 0, strikes, fd, boot;
@@ -1021,6 +1043,10 @@ static void slot_init(void)
     /* 2. kill switch and strike counter */
     if (file_exists(DISABLE_PATH)) {
         diag_log("slot refused: DISABLE pid", pid, 0, 0);
+        return;
+    }
+    if (conf_enabled_off()) {
+        diag_log("slot refused: enabled=0 pid", pid, 0, 0);
         return;
     }
 #ifdef YAFC_SLOT_LOG_ONLY
