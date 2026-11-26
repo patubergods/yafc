@@ -1,6 +1,6 @@
 # Release
 
-How the three ready-made zips are built and published. Nothing here runs on a radio, and no zip
+How the two ready-made zips are built and published. Nothing here runs on a radio, and no zip
 is ever committed: `dist/` is ignored, and the zips are attached to a GitHub release.
 
 ## What comes out
@@ -9,8 +9,7 @@ is ever committed: `dist/` is ignored, and the zips are attached to a GitHub rel
 |---|---|---|
 | `YAFC-<version>-install.zip` | `RUN-YAFC-INSTALL` | the real install |
 | `YAFC-<version>-uninstall.zip` | `RUN-YAFC-REMOVE` | the unit's own library back |
-| `YAFC-<version>-rehearse.zip` | `RUN-YAFC-REHEARSE` | the whole path, no picture change |
-| `SHA256SUMS` | - | the three hashes |
+| `SHA256SUMS` | - | the two hashes |
 
 The zip root **is** the stick root: `SyncMyMod/`, `yafc-install.sh`, `yafc-payload/`, `tools/`,
 `START-HERE.txt`, one marker, and `DISCLAIMER.txt` when `docs/DISCLAIMER.md` exists. Unzipping
@@ -56,8 +55,8 @@ stub files and exists for the host test only; never publish a build made that wa
 
    The two excluded files are the scan itself: they have to spell the pattern out.
 
-3. `START-HERE.txt` in each zip opens with the WARNING block, says the public edition has never
-   been tested on a car, and gives no timing it cannot back. `tools/test-make-release.sh` checks
+3. `START-HERE.txt` in each zip opens with the WARNING block, says the design has been used on the
+   developer's vehicle but this installer is not yet field-tested, and gives no timing it cannot back. `tools/test-make-release.sh` checks
    this; read one anyway.
 4. The hashes are reviewed, not just generated: `cat dist/SHA256SUMS`, then build again and
    compare the file.
@@ -71,10 +70,9 @@ Attach the zips to a release. Do not commit them.
 gh release create v0.3.0 \
   dist/YAFC-0.3.0-install.zip \
   dist/YAFC-0.3.0-uninstall.zip \
-  dist/YAFC-0.3.0-rehearse.zip \
   dist/SHA256SUMS \
   --title "YAFC 0.3.0" \
-  --notes "Unofficial hobby project. Not tested on a vehicle. Read docs/DISCLAIMER.md."
+  --notes "Unofficial hobby project. Used on the developer's vehicle; this installer is not yet field-tested. Read docs/DISCLAIMER.md."
 ```
 
 The tag and the version in the file names must match. On a private repository the release is
