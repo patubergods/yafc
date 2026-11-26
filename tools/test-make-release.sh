@@ -1,6 +1,6 @@
 #!/bin/sh
 # Host test for make-release.sh. It runs the assembly with a stub payload
-# (YAFC_SKIP_BUILD=1), so it needs no cross toolchain, and checks the three zips:
+# (YAFC_SKIP_BUILD=1), so it needs no cross toolchain, and checks the two zips:
 # one marker each and the right one, the stick layout at the zip root, no wrapper
 # directory, no marker left running, no private token in the text, START-HERE.txt
 # short and honest, and SHA256SUMS that verify. It builds twice and compares the
@@ -54,7 +54,7 @@ def bad(msg):
 def good(msg):
     print("ok   " + msg)
 
-VARIANTS = {"install": "INSTALL", "uninstall": "REMOVE", "rehearse": "REHEARSE"}
+VARIANTS = {"install": "INSTALL", "uninstall": "REMOVE"}
 FORBIDDEN = re.compile(r"\bpat\b|PAT_|pat-rvc|patcam")
 HOSTPATH = re.compile(r"/home/|/Users/|/mnt/c/|[A-Za-z]:[\\/](?:Users|home|Windows)")
 TEXT_MAX = 25
@@ -118,7 +118,7 @@ for variant, entries in names.items():
         bad("%s START-HERE.txt does not open with the WARNING block" % variant)
     else:
         good("%s START-HERE.txt opens with the WARNING block" % variant)
-    for phrase in ("NEVER been tested", "FMods", "UNKNOWN", "parked", "at your own risk",
+    for phrase in ("not yet field-tested", "FMods", "UNKNOWN", "parked", "at your own risk",
                    "warranty", "DISCLAIMER.md"):
         if phrase not in start:
             bad("%s START-HERE.txt lacks %r" % (variant, phrase))
@@ -155,7 +155,7 @@ else:
     if set(listed) != want:
         bad("SHA256SUMS lists %s" % sorted(listed))
     else:
-        good("SHA256SUMS lists the three zips")
+        good("SHA256SUMS lists the two zips")
     for name, digest in sorted(listed.items()):
         p = os.path.join(dist, name)
         real = hashlib.sha256(open(p, "rb").read()).hexdigest() if os.path.isfile(p) else "missing"

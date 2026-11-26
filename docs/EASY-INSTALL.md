@@ -10,9 +10,9 @@
 This page is the short version: download a file, put it on a USB drive, plug it in. You do not
 need a build, a terminal or a laptop that can talk to the car.
 
-**Read this before you start.** YAFC is an unfinished community project. The public edition has
-**never been tested on a car** - the checks that exist were run on a normal computer, not on a
-radio. The rear camera is safety-critical: a failure can obscure or interrupt it. Install only
+**Read this before you start.** YAFC is an unfinished community project. The design has been
+used on the developer's own vehicle, but this packaged installer has **not yet been run on a
+unit** - its checks were run on a normal computer. The rear camera is safety-critical: a failure can obscure or interrupt it. Install only
 while parked, and use it at your own risk. There is an undo, and it is on this page.
 
 ## What you need
@@ -28,7 +28,6 @@ while parked, and use it at your own risk. There is an undo, and it is on this p
 
 | File | What it does |
 |---|---|
-| `YAFC-<version>-rehearse.zip` | Runs the whole install with the car's own parts. **The picture does not change.** Do this one first. |
 | `YAFC-<version>-install.zip` | Installs YAFC for real. The picture changes. |
 | `YAFC-<version>-uninstall.zip` | Puts the car's own camera part back and forgets YAFC. |
 
@@ -92,8 +91,9 @@ this, so do not rely on the camera while maneuvering.
 **What USB drive and format?** The same type of drive the jailbreak already works with, freshly
 formatted. No special format is needed or documented.
 
-**Is it tested?** The public edition has never been run on a car. What is checked is listed in
-[TESTING.md](TESTING.md) and it is all **host-verified** - a computer, not a radio.
+**Is it tested?** The design has been used on the developer's own vehicle. This packaged installer has
+not yet been run on a unit; what is checked is listed in [TESTING.md](TESTING.md) and is
+**host-verified** - a computer, not a radio.
 
 **Where do I get help?** Send `yafc-install/install.log` and say which file you used. Nobody can
 tell you what went wrong from "it did not work".
