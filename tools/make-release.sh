@@ -34,7 +34,7 @@ else
   PROBE=$REPO/toolchain/probe/bin/slotprobe
 fi
 [ -f "$LIB" ] || { echo "make-release: missing $LIB" >&2; exit 1; }
-[ -x "$PROBE" ] || { echo "make-release: missing $PROBE" >&2; exit 1; }
+[ -f "$PROBE" ] || { echo "make-release: missing $PROBE" >&2; exit 1; }
 
 WORK=$OUT/work
 rm -rf "$WORK"
@@ -47,7 +47,6 @@ cp -R "$REPO/payload" "$WORK/repo/payload"
 cp -f "$REPO/tools/make-usb.sh" "$REPO/tools/apply-hmi-fragments.sh" "$WORK/repo/tools/"
 cp -f "$LIB" "$WORK/repo/toolchain/bin/libyafc.so"
 cp -f "$PROBE" "$WORK/repo/toolchain/probe/bin/slotprobe"
-chmod 755 "$WORK/repo/toolchain/probe/bin/slotprobe"
 
 # start-here VARIANT: the one page a reader sees before anything else.
 start_here() {
@@ -57,13 +56,13 @@ start_here() {
       what="Installs the YAFC camera library and HMI overlay. On the development vehicle,
 fullscreen rear video appeared early, before SYNC finished starting. The 360 view,
 parking sensors and view-selection buttons appeared later as the interface loaded."
-      undo="Use YAFC-$VERSION-uninstall.zip on a clean drive."
+      undo="For a verified install, use YAFC-$VERSION-uninstall.zip on a separate drive."
       ;;
     uninstall)
       MARK=RUN-YAFC-REMOVE
-      what="Removes the YAFC HMI overlay and restores the unit's own camera library
-if the preserved copy exists. Restart SYNC to reload the stock files."
-      undo="Install YAFC again with YAFC-$VERSION-install.zip."
+      what="Removes an owned YAFC overlay and restores the verified factory library.
+The installer refuses if it cannot verify ownership or the restored source."
+      undo="A soft reset reloads the current files; it cannot undo a persistent write."
       ;;
   esac
   cat <<EOF
@@ -71,7 +70,7 @@ WARNING: unofficial free hobby project, use at your own risk. No warranty, expre
 implied. No support. It may brick the unit or show a wrong or missing camera picture.
 We are not responsible for accidents, damage, injury or a voided warranty. Off-road,
 parked, closed-course use only; never rely on it to decide whether it is safe to move.
-If you do not agree, do not use it. Full text: docs/DISCLAIMER.md on GitHub.
+If you do not agree, do not use it. See https://github.com/patubergods/yafc/blob/main/docs/DISCLAIMER.md.
 YAFC for SYNC 3. Design used only on a 2020 Explorer ST; this installer is not yet field-tested.
 
 WHAT THIS STICK DOES
@@ -82,13 +81,13 @@ The FMods jailbreak, USB installer and FMods Tools must already be set up on the
 Install only while parked.
 
 STEPS
-1. Back up the USB drive. Formatting erases it. Unzip onto the fresh drive's root.
-2. Park, turn the ignition on, wait for SYNC, then plug it in. Install time is UNKNOWN.
-3. Confirm yafc-install/DONE, then restart SYNC: hold Power + Seek-Right about 10 seconds.
+1. Back up the USB drive. Unzip to the root of a drive that already works with the USB hook.
+2. Park with the brake held, turn the ignition on, wait for SYNC, then plug it in. Install time is UNKNOWN.
+3. For a confirmed DONE below, restart SYNC: hold Power + Seek-Right about 10 seconds.
 
-DID IT WORK? yafc-install/DONE = worked, yafc-install/FAILED = stopped. If it failed
-send yafc-install/install.log. Do not re-plug repeatedly: a failed request is kept
-as $MARK.running and will not run again.
+CHECK: In yafc-install/, match the DONE or FAILED request ID to this run in install.log.
+If $MARK.running remains or the result is unclear, preserve the stick and logs.
+Do not retry. Recovery: https://github.com/patubergods/yafc/blob/main/docs/RECOVERY.md.
 UNDO: $undo
 EOF
 }
@@ -109,7 +108,7 @@ for root, dirs, files in os.walk(src):
 entries.sort()
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_STORED) as z:
     for arc, p in entries:
-        mode = 0o755 if os.stat(p).st_mode & 0o111 else 0o644
+        mode = 0o755 if arc.endswith(".sh") else 0o644
         info = zipfile.ZipInfo(arc, date_time=(1980, 1, 1, 0, 0, 0))
         info.compress_type = zipfile.ZIP_STORED
         info.create_system = 3

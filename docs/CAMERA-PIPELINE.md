@@ -71,18 +71,27 @@ shared buffer. The compositor performs scaling; this version does not rewrite ca
 `/fs/tmpfs/yafc-view`, on every view pick. The record is one line:
 
 ```
-compose;cam_src(4),cam_dst(4),bay_src(4),bay_dst(4)\n
+<session><seq>;<compose>;<16 rects>\n
 ```
 
-`compose` is `0` or `1`; each rectangle is `x,y,w,h`. A valid record replaces all four
-rectangles; a missing, short, trailing or out-of-range record is ignored and the last good
-geometry stays in force. The library re-reads the mailbox before the real post. The
-configuration file is not rewritten on a view pick; only Settings persists it.
+The session prefix is the native's identity from `/fs/tmpfs/yafc-session`; `seq` advances
+on every publication. `compose` is `0` or `1`; each rectangle is `x,y,w,h`. A valid record
+replaces all four rectangles; a missing, short, trailing or out-of-range record is ignored and
+the last good geometry stays in force. The library echoes the accepted record in
+`/fs/tmpfs/yafc-ready` after a successful Screen post with verified geometry. The library
+re-reads the mailbox before the real post. The configuration file is not rewritten on a view
+pick; only Settings persists it.
 
 **verified on one radio:** a single-camera view is composed centered in an 800x480 band at
 `y=400`, with the small sensor panel below and black elsewhere. Hero and 360 Only keep the
-two-window layout. The black "Please wait..." cover and its dwell are HMI-only; the library
-does not read `cover_ms`.
+two-window layout. The black "Please wait..." cover and its dwell are handled by the HMI popup
+only; the library does not read `cover_ms`.
+
+**Limits:** A ready file proves `screen_post_window` returned success and the compositor
+accepted the geometry. It does **not** prove the display painted the result or that a
+late-created bay ever appeared. QML timers stall with the render thread; the native's
+`LEASE_MS` expiry is local-only. No atomic cross-process liveness proof exists. `DISABLE`
+prevents new requests but does not kill an active lease. **UNPROVEN** on a radio.
 
 **UNPROVEN:** child-window creation, sharing, placement, and visibility on every target.
 **UNPROVEN:** the public fragments and this library have never been applied to a radio.
@@ -154,6 +163,14 @@ That observation does not establish what the blank region can show in other cond
 A second window can only show available buffer content; it cannot create missing imagery.
 
 ## Safety and open questions
+
+**UNPROVEN** QNX-specific behaviours on a radio:
+- the `DL_DEBUG=libs` loader trace format;
+- `dladdr` returning the expected paths for GOT symbols;
+- the `-o before` mount flag arranging image layers in the expected order;
+- the file-image mount listing (`mount` output for loopback-backed images);
+- the second read-only inspection mount of the built image;
+- busy layers after a restart, when the installer replays the mount list.
 
 The following remain **UNPROVEN**, even when a pointer or a post is available:
 

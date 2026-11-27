@@ -3,6 +3,35 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## 2026-11-26 (all-or-nothing install, RECOVER, handshake, unproven QNX)
+
+- Install is now all-or-nothing. Exit 8 (missing stock file), 9 (fragment refusal), or 10 (image
+  build/read-back) leave the slot untouched. There is no "library installed but HMI not published"
+  state. A failure after the slot write rolls back to the journaled previous library bytes, or
+  retains the journal for recovery.
+- Added `RUN-YAFC-RECOVER`. On a fresh stick, restores the journaled previous state from an
+  interrupted install or remove. Refuses when the journal does not authenticate, a file digest
+  differs, or a layer is busy.
+- Added the unowned-stock digest limit: only the one recorded stock build of
+  `libRCN_DiagnosticsLib.so` is accepted as unowned. Other firmware refused until its digest is
+  independently verified.
+- Added shadowing-overlay refusal. Before any write, every other `overlay*.img` is mounted
+  read-only and checked. An overlay that provides or obscures a YAFC target path is refused.
+- Added per-request receipts. Each receipt is in a request-specific directory under
+  `yafc-install/request-<id>/`. The `.running` marker carries a unique request ID and is consumed
+  only when `DONE` is written.
+- Added the session/ready handshake. The native writes `/fs/tmpfs/yafc-session` at start. The
+  popup prefixes every mailbox record with the session and an advancing sequence number. The
+  native echoes the accepted record in `/fs/tmpfs/yafc-ready` after a successful post. The popup
+  composes only after two advancing ready replies. A ready file proves Screen post and geometry
+  acceptance, not displayed pixels or a painted late bay. QML timer stalls are not detected by
+  the native. `LEASE_MS` expiry is local-only: no atomic cross-process liveness proof.
+- **UNPROVEN** QNX items documented: `DL_DEBUG=libs` trace format, `dladdr` paths, `-o before`
+  mount flag ordering, file-image mount listing, second read-only inspection mount, busy layers
+  after restart.
+- Updated all docs to remove "HMI only" failure semantics and add the new contracts. STATUS
+  labels remain honest (host-verified vs UNPROVEN).
+
 ## 2026-11-25 (USB HMI install and removal)
 
 - The USB installer stages the radio's four stock HMI files, applies the complete

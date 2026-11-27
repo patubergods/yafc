@@ -51,9 +51,12 @@ Full details, including the exact write order and what each receipt means:
 
 - **Fast:** create `/fs/rwdata/yafc/DISABLE` on the unit (or arm `RUN-YAFC-DISABLE`) and
   restart SYNC so the library and popup stand down.
-- **HMI only:** arm `RUN-YAFC-REMOVE-HMI`. It deletes the overlay and leaves the library alone.
+- **Overlay only:** arm `RUN-YAFC-REMOVE-HMI`. It deletes the overlay and leaves the library alone.
 - **Complete:** arm `RUN-YAFC-REMOVE`. It deletes the overlay before restoring the unit's own
   library if a preserved copy exists. Restart SYNC to reload the stock files.
+- **Recover from interruption:** arm `RUN-YAFC-RECOVER` on a fresh stick after an install or
+  remove was interrupted. It restores the journaled previous state only when every file and
+  record authenticates.
 - **A stuck unit:** a soft reset (hold Power + Seek-Right about ten seconds) restores the boot
   layering. Details in [RECOVERY.md](docs/RECOVERY.md).
 

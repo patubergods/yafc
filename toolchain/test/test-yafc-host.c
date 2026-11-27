@@ -46,6 +46,7 @@ static int fake_open(const char *p, int qflags, ...)
         f |= O_WRONLY;
     }
     if (qflags & 0x100) f |= O_CREAT;     /* QNX O_CREAT */
+    if (qflags & 0x400) f |= O_EXCL;
     if (qflags & 0x08)  f |= O_APPEND;    /* QNX O_APPEND */
     return open(map_path(p), f, 0644);
 }
@@ -53,7 +54,7 @@ __attribute__((unused)) static int fake_unlink(const char *p) { return unlink(ma
 static int g_fake_pid = 4242;
 static int fake_getpid(void) { return g_fake_pid; }
 struct qnx_timespec;
-static int g_now;
+static int g_now = 1;
 static int fake_clock(int c, struct qnx_timespec *t);
 /* The interposer aborts deliberately when it cannot resolve libscreen in a
  * non-pass mode (M-16). Stub abort so the harness survives to assert it. */
@@ -182,6 +183,10 @@ struct pc_phdr { unsigned p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz,
 struct pc_dl_info { unsigned long dlpi_addr; const char *dlpi_name; const struct pc_phdr *dlpi_phdr; unsigned short dlpi_phnum; };
 #endif
 
+/* The host-test clock advances g_now by 1 s per post, so the same-sequence
+ * request must survive at least two posts. Override the 500 ms radio lease. */
+#define LEASE_MS 3000
+
 #include LIB_SRC
 
 #ifdef LEGACY
@@ -211,7 +216,7 @@ static int f_set_iv_(void *w, int p, const int *v)
 {
     int pair = p == SP_POSITION || p == SP_SIZE ||
                p == SP_SOURCE_POSITION || p == SP_SOURCE_SIZE;
-    wval_put(w, p, v[0], pair ? v[1] : 0);
+    if (!g_set_rc) wval_put(w, p, v[0], pair ? v[1] : 0);
     rec("set", w, p, v[0], pair ? v[1] : 0, 0);
     return g_set_rc;
 }
@@ -278,7 +283,52 @@ static void write_file(const char *name, const char *s)
     FILE *f = fopen(name, "w");
     if (f) { fputs(s, f); fclose(f); }
 }
-static void write_conf(const char *s) { write_file("camera.conf", s); }
+#ifdef YAFC_SLOT
+/* Model the HMI half of the older geometry scenarios. Explicit protocol cases
+ * below drive the files themselves, including the absent or dead peer. */
+static const char *ui_conf;
+static int ui_seq;
+static int ui_suppress; /* non-zero: ui_heartbeat returns without writing */
+static void request_payload(const char *payload)
+{
+    char text[256];
+    snprintf(text, sizeof text, "%s%d;%s", g_session, ++ui_seq, payload);
+    write_file("yafc-view", text);
+}
+/* Write a session-prefixed mailbox entry for the protocol tests.
+ * payload is everything after the session:seq; prefix (compose;rects). */
+static void mb_write(const char *payload)
+{
+    char text[256];
+    snprintf(text, sizeof text, "%s1;%s", g_session, payload);
+    write_file("yafc-view", text);
+}
+static void ui_heartbeat(void)
+{
+    static const char *keys[] = { "cam_src=", "cam_dst=", "bay_src=", "bay_dst=" };
+    int r[4][4] = {{0,0,438,480},{0,71,800,527},{448,0,272,480},{0,0,0,0}};
+    int i, len;
+    const char *v;
+    char text[128];
+    if (ui_suppress || !ui_conf || !g_session_len) return;
+    v = strstr(ui_conf, "view=");
+    len = snprintf(text, sizeof text, "%d;", !v || view_is_combined(v + 5));
+    for (i = 0; i < 4; ++i) {
+        v = strstr(ui_conf, keys[i]);
+        if (v) sscanf(v + strlen(keys[i]), "%d,%d,%d,%d", &r[i][0], &r[i][1], &r[i][2], &r[i][3]);
+        len += snprintf(text + len, sizeof text - (size_t)len, "%d,%d,%d,%d%c",
+                        r[i][0], r[i][1], r[i][2], r[i][3], i == 3 ? '\n' : ',');
+    }
+    request_payload(text);
+}
+#endif
+static void write_conf(const char *s)
+{
+    write_file("camera.conf", s);
+#ifdef YAFC_SLOT
+    ui_conf = s;
+#endif
+}
 #ifdef YAFC_SLOT
 static void reset_view_rects(void)
 {
@@ -287,6 +337,7 @@ static void reset_view_rects(void)
     memcpy(g_cam_src, cs, sizeof cs); memcpy(g_cam_dst, cd, sizeof cd);
     memcpy(g_bay_src, bs, sizeof bs); g_bay_dst[0] = g_bay_dst[1] = g_bay_dst[2] = g_bay_dst[3] = 0;
     g_live_view = 0; g_view_compose = 1; g_geo_dirty = 1;
+    begin_session();
 }
 #endif
 static int exists(const char *name) { struct stat st; return stat(name, &st) == 0; }
@@ -336,12 +387,15 @@ static void reset_core(int keep_files)
 #ifdef YAFC_SLOT
     g_is_cam = 0; g_ident_busy = 0; g_ident_done = 0; g_ident_tries = 0; g_cam_win = 0;
     g_inflight = 0; g_slot_dead = 0; g_boot_len = 0; g_live_view = 0;
+    g_session[0] = 0; g_session_len = g_request_len = g_serial = g_acked = 0;
+    g_request_ms = 0; ui_seq = 0; ui_conf = 0; ui_suppress = 0;
     get_win_cv = 0;
     arm_slot();
 #endif
     unlink("post.log");
     if (!keep_files) { unlink("DISABLE"); unlink("slot-inflight"); unlink("slot-strikes"); }
     unlink("yafc-view");
+    if (!keep_files) { unlink("yafc-session"); unlink("yafc-ready"); }
 }
 #define reset_state() reset_core(0)
 
@@ -360,6 +414,7 @@ static int do_create(void **w, void *ctx)
 static int do_post(void *w)
 {
 #ifdef YAFC_SLOT
+    ui_heartbeat();
     return ((f_post)(g_got[0] == (void *)0x1234 ? (void *)f_post_ : g_got[0]))(w, &buf_obj, 1, 0, 0);
 #else
     return screen_post_window(w, &buf_obj, 1, 0, 0);
@@ -369,6 +424,9 @@ static void start_with_id(const char *id)
 {
     void *w = 0;
     yafc_init();
+#ifdef YAFC_SLOT
+    ui_heartbeat();
+#endif
     do_create(&w, &ctx_obj);
     if (id) set_id(CAM, id);
     f_flush_(&ctx_obj, 0);
@@ -615,7 +673,13 @@ int main(void)
     write_conf("enabled=1\nmode=compose\nview=rear360\nreread=0\ncam_dst=0,0,800,555\n");
     start_camera();
     posts(1);
+#ifdef YAFC_SLOT
+    const char *unchanged_selection = ui_conf;
+#endif
     write_conf("enabled=1\nmode=compose\nview=rear360\nreread=0\ncam_dst=0,0,800,600\n");
+#ifdef YAFC_SLOT
+    ui_conf = unchanged_selection; /* no live view selection change */
+#endif
     ncalls = 0;
     posts(200);
     check("reread=0: config not re-read, no pushes", count("set", 0) == 0);
@@ -988,15 +1052,18 @@ int main(void)
     check("S7 marker unwritable: frames still post", count("post", CAM) == 10);
     rmdir("slot-inflight");
 
-    /* ---- S9. RAM mailbox parser: valid, fallback, and bounds ---- */
+    /* ---- S9. RAM mailbox parser: valid, fallback, and bounds ----
+     * The mailbox now requires a session prefix (g_session). reset_view_rects()
+     * calls begin_session() which sets g_session. Each write uses mb_write() which
+     * prepends g_session + seq + ";". */
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    mb_write("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
     read_live_view();
     check("S9 valid compose record applies all four rectangles",
           g_live_view && g_view_compose && g_cam_src[1] == 6 && g_cam_dst[1] == 400 &&
           g_bay_src[0] == 447 && g_bay_dst[2] == 0);
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    mb_write("0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
     read_live_view();
     check("S9 compose=0 clears compose and keeps prior rectangles",
           g_live_view && !g_view_compose && g_cam_dst[1] == 71 && g_cam_dst[2] == 800);
@@ -1004,27 +1071,27 @@ int main(void)
     read_live_view();
     check("S9 missing mailbox falls back", !g_live_view && g_cam_dst[1] == 71);
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "1;0,6,720");
+    mb_write("1;0,6,720");
     read_live_view();
     check("S9 truncated record falls back", !g_live_view && g_cam_dst[1] == 71);
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "x;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    mb_write("x;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
     read_live_view();
     check("S9 garbage mode falls back", !g_live_view && g_cam_dst[1] == 71);
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "1;-1,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    mb_write("1;-1,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
     read_live_view();
     check("S9 negative number falls back", !g_live_view && g_cam_src[0] == 0);
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "1;0,0,721,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    mb_write("1;0,0,721,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
     read_live_view();
     check("S9 oversized source rectangle falls back", !g_live_view && g_cam_src[2] == 438);
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "1;0,0,0,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    mb_write("1;0,0,0,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
     read_live_view();
     check("S9 zero non-bay dimension falls back", !g_live_view && g_cam_src[2] == 438);
     reset_state(); reset_view_rects();
-    write_file("yafc-view", "1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\nold\n");
+    mb_write("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\nold\n");
     read_live_view();
     check("S9 trailing bytes fall back", !g_live_view && g_cam_dst[1] == 71);
 
@@ -1033,7 +1100,8 @@ int main(void)
     write_conf(CONF_COMPOSE "reread=0\n");
     start_camera();
     posts(2);
-    write_file("yafc-view", "1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    ui_suppress = 1; /* protocol test: drive mailbox directly */
+    request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
     ncalls = 0;
     posts(1);
     {
@@ -1046,12 +1114,265 @@ int main(void)
         check("S10 live mailbox geometry applies before the next camera post",
               g_live_view && g_geo_ours && g_cam_dst[1] == 400 && first_set >= 0 && first_post > first_set);
     }
-    write_file("yafc-view", "1;0,6");
+    /* Partial write: truncated. Use a direct write with a fresh seq. */
+    {
+        char partial[256];
+        snprintf(partial, sizeof partial, "%s%d;1;0,6\n", g_session, ui_seq + 1);
+        write_file("yafc-view", partial);
+    }
     posts(1);
     check("S10 partial live write keeps last valid geometry", g_geo_ours && g_cam_dst[1] == 400);
-    write_file("yafc-view", "0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    request_payload("0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
     posts(1);
     check("S10 live compose-off restores stock", !g_view_compose && !g_geo_ours && !g_bay_shown);
+
+    /* === Protocol: session / request / lease / acknowledge (P1-P8) === */
+
+    /* ---- P1. Success: full publish-acknowledge cycle ----
+     * HMI publishes a combined view; native applies geometry and writes the
+     * ready file echoing the exact request. Two advancing replies prove the
+     * native is alive across sequence numbers. */
+    {
+        char ready[256];
+        int seq1, seq2;
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE);
+        start_camera();
+        posts(2);
+        ui_suppress = 1; /* protocol test: drive mailbox directly */
+        /* HMI publishes the first request. request_payload uses ++ui_seq
+         * so the sequence advances past the setup posts. */
+        seq1 = ui_seq + 1;
+        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+        posts(1);
+        {
+            FILE *f = fopen("yafc-ready", "r");
+            size_t nr = f ? fread(ready, 1, sizeof ready - 1, f) : 0;
+            if (f) fclose(f);
+            if (nr > 0) ready[nr] = 0; else ready[0] = 0;
+        }
+        check("P1 ready file written after valid post + geometry",
+              g_geo_ours && g_acked == g_serial && exists("yafc-ready"));
+        {
+            char expected[256];
+            snprintf(expected, sizeof expected, "%s%d;1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n", g_session, seq1);
+            check("P1 ready echoes the exact request", !strcmp(ready, expected));
+        }
+        /* HMI publishes the second (advancing) request */
+        seq2 = ui_seq + 1;
+        request_payload("1;0,0,438,480,0,71,800,527,448,0,272,480,0,0,0,0\n");
+        posts(1);
+        check("P1 second advancing request acknowledges",
+              g_acked == g_serial && g_serial == seq2 && exists("yafc-ready"));
+        /* A stale first request (seq=seq1 within lease but after seq advanced) is
+         * ignored: seq < g_serial. Transient rejects preserve g_live_view so a
+         * single stale write does not leave composition. */
+        {
+            char oldreq[256];
+            snprintf(oldreq, sizeof oldreq, "%s%d;1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n", g_session, seq1);
+            write_file("yafc-view", oldreq);
+        }
+        posts(1);
+        check("P1 stale sequence ignored, geometry survives",
+              g_live_view && g_geo_ours && g_acked == g_serial);
+    }
+
+    /* ---- P2. Stale session: HMI carries old session, native has new one ---- */
+    {
+        char old_session[36];
+        reset_state(); reset_view_rects();
+        /* Remember session A. */
+        memcpy(old_session, g_session, g_session_len + 1);
+        /* Restart native → new session B. Advance the clock so the
+         * monotonic timestamp differs and the session prefix mismatch
+         * is actually detected. */
+        g_now += 100;
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE);
+        start_camera();
+        posts(2);
+        ui_suppress = 1;
+        /* HMI still writes session A prefix. */
+        {
+            char stale[256];
+            snprintf(stale, sizeof stale, "%s1;1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n", old_session);
+            write_file("yafc-view", stale);
+        }
+        posts(1);
+        check("P2 stale session ignored", !g_live_view && !g_geo_ours && !exists("yafc-ready"));
+        /* Native's own session B still works. */
+        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+        posts(1);
+        check("P2 correct session still acknowledged",
+              g_live_view && g_geo_ours && exists("yafc-ready"));
+    }
+
+    /* ---- P3. Missing native: no session, no compose ----
+     * Without begin_session(), g_session_len == 0. The read_live_view gate
+     * `if (!g_session_len)` rejects every mailbox entry. */
+    reset_state();
+    write_conf(CONF_COMPOSE);
+    write_file("yafc-view", "BOGUS1;1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("P3 no session: mailbox ignored", !g_live_view);
+    /* With a fake session that does not match the mailbox prefix: also ignored. */
+    reset_state(); reset_view_rects();
+    /* write a mailbox with a deliberately wrong session prefix */
+    write_file("yafc-view", "9999.9999.9999;1;1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+    read_live_view();
+    check("P3 wrong session prefix: mailbox ignored", !g_live_view);
+
+    /* ---- P4. DISABLE: new requests blocked mid-session ----
+     * A DISABLE file written mid-flight prevents the native from accepting a
+     * NEW sequence. The current acknowledged request stays composited until its
+     * lease expires or the HMI stops publishing. */
+    {
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE);
+        start_camera();
+        posts(2);
+        ui_suppress = 1;
+        /* First request: accepted and acknowledged. */
+        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+        posts(1);
+        check("P4 pre-DISABLE request acknowledged", g_live_view && g_acked == g_serial);
+        /* Write DISABLE file. */
+        write_file("DISABLE", "x");
+        /* Current request (same seq, within lease) still valid. */
+        posts(1);
+        check("P4 same request within lease survives DISABLE", g_live_view);
+        /* New sequence: blocked. */
+        request_payload("1;0,0,438,480,0,71,800,527,448,0,272,480,0,0,0,0\n");
+        posts(1);
+        check("P4 new sequence after DISABLE rejected", !g_live_view && !g_geo_ours);
+        unlink("DISABLE");
+    }
+
+    /* ---- P5. Partial write: truncated or mismatched mailbox ---- */
+    {
+        int seqA;
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE);
+        start_camera();
+        posts(2);
+        ui_suppress = 1;
+        /* Truncated: not enough rectangles. */
+        {
+            char partial[256];
+            snprintf(partial, sizeof partial, "%s%d;1;0,6,720\n", g_session, ui_seq + 1);
+            write_file("yafc-view", partial);
+        }
+        posts(1);
+        check("P5 truncated mailbox: geometry survives (transient failure preserves g_live_view)",
+              g_live_view && g_geo_ours);
+        /* Valid request. */
+        seqA = ui_seq + 1;
+        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+        posts(1);
+        check("P5 valid request accepted after truncation", g_live_view);
+        /* Different content with an old seq (seq=1 < g_serial): transient
+         * rejection preserves the current state. */
+        mb_write("1;0,0,438,480,0,71,800,527,448,0,272,480,0,0,0,0\n");
+        posts(1);
+        check("P5 same-seq different content ignored (stale seq, geometry survives)",
+              g_live_view && g_geo_ours);
+        /* Non-numeric compose flag: transient parse error, live view survives. */
+        {
+            char bad[256];
+            snprintf(bad, sizeof bad, "%s%d;x;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n", g_session, ui_seq + 1);
+            write_file("yafc-view", bad);
+        }
+        posts(1);
+        check("P5 non-numeric compose ignored (geometry survives)",
+              g_live_view && g_geo_ours);
+    }
+
+    /* ---- P6. Restart: native restarts, new session, old HMI stops ----
+     * The HMI polls the session file. When it changes, yafcStop() clears the
+     * HMI session and the ready file disappears. The native sees no valid
+     * request and leaves composition. */
+    {
+        char old_session[36];
+        reset_state(); reset_view_rects();
+        memcpy(old_session, g_session, g_session_len + 1);
+        write_conf(CONF_COMPOSE);
+        start_camera();
+        posts(2);
+        ui_suppress = 1;
+        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+        posts(1);
+        check("P6 old session composes", g_geo_ours);
+        /* Simulate restart: new session, HMI stops publishing old session. */
+        g_session[0] = 0; g_session_len = 0;
+        unlink("yafc-ready");
+        write_file("yafc-session", "9999.9999.9999;");  /* new native session */
+        /* Old mailbox still has old session prefix → ignored. */
+        posts(3);
+        check("P6 old session rejected after restart", !g_live_view && !g_geo_ours);
+        /* New HMI would read the new session and publish with it. */
+    }
+
+    /* ---- P7. Timeout / lease expiry ----
+     * The native's LEASE_MS (500ms) gate: a same-sequence request past the
+     * lease window is rejected. A new sequence resets the clock. */
+    {
+        int seqP7;
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE "reread=0\n");
+        start_camera();
+        posts(2);
+        ui_suppress = 1;
+        /* First request at g_now = some time. */
+        seqP7 = ui_seq + 1;
+        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+        posts(1);
+        check("P7 request accepted within lease", g_live_view);
+        /* Advance clock past the lease window. */
+        g_now += 600;  /* 600 s past 500ms lease; clock granularity is seconds in the harness */
+        posts(1);
+        check("P7 same request past lease rejected", !g_live_view && !g_geo_ours);
+        /* New sequence: accepted (resets the clock). */
+        request_payload("1;0,0,438,480,0,71,800,527,448,0,272,480,0,0,0,0\n");
+        posts(1);
+        check("P7 new sequence after expiry accepted", g_live_view);
+    }
+
+    /* ---- P8. Bay-not-painted limit (documented in yafc-slot.c) ----
+     * Measured on the radio 2026-11-22: a child window created after the parent
+     * camera window has been posted reports every property set as successful and
+     * is still never painted. The library therefore creates the bay exactly once
+     * and never destroys it. bay_hide only toggles VISIBLE. Tests 4 and 5
+     * already verify the same bay survives hide/show cycles across view changes.
+     * This test confirms: a bay deliberately destroyed during the process is NOT
+     * recreated (g_bay_tried is set), because a late creation cannot paint. The
+     * self-heal tick retries a bounded number of times (30), and a compose-mode
+     * view change resets g_bay_tried, so the bay retries on the next view cycle.
+     * limit: retries cannot fix a late-created bay that the compositor refuses
+     * to paint; a reboot is required. */
+    {
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE);
+        start_camera();
+        posts(3);
+        void *bay8 = g_bay_win;
+        int creates_before = count("create_type", 0);
+        check("P8a bay exists and is shown on first compose", bay8 != 0 && g_bay_shown);
+        /* Simulate window manager destroying the child. Exhaust the self-heal
+         * retry budget so the library does not recreate it: g_bay_tried blocks
+         * ensure_bay_window and g_bay_retries >= 30 blocks the self-heal reset. */
+        g_bay_win = 0; g_bay_shown = 0; g_bay_tried = 1; g_bay_retries = 30;
+        posts(200);
+        check("P8b destroyed bay stays gone (late creation cannot paint)",
+              g_bay_win == 0 && count("create_type", 0) == creates_before);
+        /* Self-heal retry budget exhausted: no more retries. A fresh compose
+         * cycle (view change) would reset g_bay_retries, but without one the
+         * bay stays gone — matching the radio's documented limit. */
+        g_bay_tried = 0; g_bay_retries = 0;
+        posts(40);
+        check("P8c bay recreated on next compose cycle after budget reset",
+              g_bay_win != 0 && g_bay_shown);
+        check("P8d retry logged (bay child setfail on creation)", log_has("bay child setfail"));
+    }
 
     /* the recorded hash matches the real binary when it is available */
     {
@@ -1074,6 +1395,7 @@ int main(void)
     unlink("post.log");
     unlink("boot_count");
     unlink("DISABLE"); unlink("slot-inflight"); unlink("slot-strikes");
+    unlink("yafc-view"); unlink("yafc-session"); unlink("yafc-ready");
     if (chdir(cwd) != 0) failures++;
     rmdir(dir);
 

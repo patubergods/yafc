@@ -63,7 +63,9 @@ Look on the USB drive:
 
 - `yafc-install/DONE` - it finished and its own checks passed.
 - `yafc-install/FAILED` - it stopped. `yafc-install/install.log` says why and what was left in
-  place. `HMI only` means the slot passed its probe but the new overlay was not published.
+  place. The slot library is never written without the HMI overlay being published: install
+  is all-or-nothing. A failure before the slot write leaves the slot untouched; a failure
+  after the slot write rolls back to the journaled previous library bytes.
 
 ## If it fails
 
@@ -72,10 +74,15 @@ the marker is renamed to `RUN-YAFC-INSTALL.running`, and it is deleted only when
 succeeded. A failed stick keeps the `.running` file, so every later insertion does nothing at all.
 That is deliberate: it stops a half-finished install from being repeated on every plug.
 
-So after a failure: read `install.log` and do not re-plug. To try again, delete
-`RUN-YAFC-INSTALL.running` from the drive (or unzip a fresh copy of the file) and start over at
-step 1. If the radio is not behaving, a soft reset - hold **Power + Seek-Right** for about 10
-seconds - restores the boot layering.
+So after a failure: read `install.log` and do not re-plug. Most failures leave the slot
+untouched, but if the failure happened after the slot was written and before the journal was
+settled, the previous library bytes may be the journaled ones. To check, arm
+`RUN-YAFC-RECOVER` on a fresh stick. The recover mode restores the journaled previous state only
+when every file and record authenticates; it refuses otherwise.
+
+To try again from the start, delete `RUN-YAFC-INSTALL.running` from the drive (or unzip a fresh
+copy) and start over at step 1. If the radio is not behaving, a soft reset — hold **Power +
+Seek-Right** for about 10 seconds — restores the boot layering.
 
 ## Uninstall
 
@@ -83,13 +90,14 @@ Repeat the install steps with `YAFC-<version>-uninstall.zip` on a clean drive, n
 install files. Look for `RUN-YAFC-REMOVE` instead of `RUN-YAFC-INSTALL`. The uninstall deletes
 the HMI overlay and, if the preserved copy of the car's own library exists, restores the
 library and removes that copy. Confirm `yafc-install/DONE`, then restart SYNC to reload the
-stock files.
+stock files. To remove only the overlay and keep the library, use `RUN-YAFC-REMOVE-HMI`. If a
+remove was interrupted, use `RUN-YAFC-RECOVER` on a fresh stick to restore the journaled state.
 
 ## If the picture is wrong and you want it back now
 
 Use the uninstall file. The kill switch also turns YAFC off without removing it. Arm
 `RUN-YAFC-DISABLE` or create `/fs/rwdata/yafc/DISABLE` in the jailbreak's shell, then restart
-SYNC. See [RECOVERY.md](RECOVERY.md) for details and HMI-only removal.
+SYNC. See [RECOVERY.md](RECOVERY.md) for details and overlay-only removal.
 
 ## Questions
 

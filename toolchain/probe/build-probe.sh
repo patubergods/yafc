@@ -98,5 +98,6 @@ solint "$out/libslotgot_ro.so" ""
 solint "$out/libslotexp.so" "screen_create_window screen_post_window "
 
 mkdir -p "$here/bin"
-cp "$out/slotprobe" "$out/libslotgot.so" "$out/libslotgot_ro.so" "$out/libslotexp.so" "$here/bin/"
+install -m 755 "$out/slotprobe" "$here/bin/slotprobe"
+cp "$out/libslotgot.so" "$out/libslotgot_ro.so" "$out/libslotexp.so" "$here/bin/"
 ( cd "$here" && sha256sum bin/slotprobe bin/libslotgot.so bin/libslotgot_ro.so bin/libslotexp.so run-probe.sh > SHA256SUMS && cat SHA256SUMS )

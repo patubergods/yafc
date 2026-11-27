@@ -18,7 +18,12 @@ packaged installer and HMI contracts, but this installer has **not been run on a
 | Per-view rectangles and presets | **Host-verified** as fragments on stock-like fixtures; the private development build's observations do not establish this edition. |
 | `camera.conf` (view, layout and HMI defaults) | Installer seeds it only when absent. **UNPROVEN** on a unit. |
 | Failure counter plus `DISABLE` | **host-verified** as code and as a host test. **UNPROVEN**: it has never been made to fire on a unit. |
-| Installer, five modes | Host tests cover retained bytes, overlay paths, mount replay and failure receipts. Rehearsal never publishes or initializes config. **UNPROVEN** on a unit. |
+| Installer, six modes | Host tests cover retained bytes, overlay paths, mount replay, journaling, rollback, and failure receipts. Rehearsal never publishes or initializes config. Recovery restores journaled state. Install is all-or-nothing (exit 8/9/10 leave the slot untouched). **UNPROVEN** on a unit. |
+| Ownership model (recorded stock digest, own-slot-only) | Host-verified. Only the one recorded stock digest accepted as unowned. **UNPROVEN** on a unit. |
+| Shadowing-overlay refusal | Host-verified as mock mounts. Other overlay images inspected read-only before any write. **UNPROVEN** on a unit. |
+| Request-ID receipts | Host-verified. Per-request report directory, timestamp key, `.running` marker consumed only on DONE. **UNPROVEN** on a unit. |
+| Session/ready handshake (popup/native) | Host-verified: the fragment code reads and writes the session, mailbox, and ready files; the native code writes session and ready after a post. **UNPROVEN** on a radio. |
+| Unproven QNX behaviours | DL_DEBUG=libs trace format, dladdr paths, -o before mount order, file-image mount listing, second read-only inspection mount, busy layers after restart: all **UNPROVEN** on a radio. |
 | Loader probe | **host-verified** as a build; its own output format is documented from the source. **UNPROVEN** on a unit. |
 | HMI fragments and USB image path | Host tests use synthetic stock-like QML, JavaScript stubs and mock image mounts. The public fragments and image recipe are **UNPROVEN** on a radio. |
 | Live view mailbox and compose band | **host-verified** (parser cases in the host suite). **Verified on one radio** in the private development build, not in this edition. |
@@ -54,12 +59,17 @@ These are one unit's observations, not a specification.
 ## Next steps, in order
 
 1. Build the stick, rehearse (`RUN-YAFC-REHEARSE`), and read `install.log`. Rehearsal does not publish HMI changes.
-2. Prove the counter on purpose - a throwaway build that fails, or a temporarily invalid config -
+2. Run the probe on the unit to confirm the `DL_DEBUG=libs` trace format, `dladdr` paths, and
+   loaded-from resolution.
+3. Prove the counter on purpose — a throwaway build that fails, or a temporarily invalid config —
    with the restore known, and confirm `DISABLE` appears and clears.
-3. `RUN-YAFC-INSTALL`, reboot, and watch the camera. One dry run first.
-4. Calibrate the picture: run the `SV_*` values through the config and compare against the observed
+4. `RUN-YAFC-INSTALL`, reboot, and watch the camera. One dry run first. This proves the session/ready
+   handshake, the `-o before` mount order, the file-image mount listing, and the second read-back
+   mount.
+5. Trigger an interrupted install (unplug mid-way) and recover with `RUN-YAFC-RECOVER`.
+6. Calibrate the picture: run the `SV_*` values through the config and compare against the observed
    HMI values, one variable at a time, with the vehicle stationary.
-5. Only then, record the on-unit results here and update the labels.
+7. Only then, record the on-unit results here and update the labels.
 
 ## Documentation set
 

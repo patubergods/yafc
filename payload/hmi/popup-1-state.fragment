@@ -162,30 +162,62 @@
         return enabled && mode === "compose";
     }
 
-    function yafcPublishView(e) {
-        if (!yafcShown || e === undefined) return false;
-        var hero = yafcViews.rear360;
-        var compose = e.compose === true || e.cfg === "rear360" || e.cfg === "front360";
-        var text = (compose ? "1;" : "0;") +
-                [e.camSrc || hero.camSrc, e.camDst || hero.camDst,
-                 e.baySrc || hero.baySrc, e.bayDst || hero.bayDst].join(",") + "\n";
-        var yafcViewUrl = "file:///fs/tmpfs/yafc-view";
+    // Session identity: PID.monotonic_sec.monotonic_nsec;
+    // The native writes /fs/tmpfs/yafc-session at start. The popup reads it
+    // on entry and prefixes every mailbox record with it. A mismatch means the
+    // native restarted or is absent; the popup then stops asserting a custom
+    // layout. There is no atomic cross-process liveness proof: a ready reply
+    // means the native processed the request and the compositor accepted the
+    // property sets, not that the display painted the result. QML timers stall
+    // with the render thread; a late-created bay may never paint.
+    property string yafcSession: ""
+    property string yafcRequest: ""
+    property string yafcLastAck: ""
+    property string yafcRequestedKey: ""
+    property int yafcSeq: 0
+    property double yafcSentAt: 0
+    property string yafcViewUrl: "file:///fs/tmpfs/yafc-view"
+    property string yafcReadyUrl: "file:///fs/tmpfs/yafc-ready"
+    property string yafcSessionUrl: "file:///fs/tmpfs/yafc-session"
+
+    function yafcRead(url) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, false);
+            xhr.send();
+            if (xhr.status === 0 || xhr.status === 200) return xhr.responseText;
+        } catch (e) {}
+        return "";
+    }
+
+    function yafcPut(text) {
         try {
             var xhr = new XMLHttpRequest();
             xhr.open("PUT", yafcViewUrl, false);
             xhr.send(text);
-            if (xhr.status === 0 || xhr.status === 200 || xhr.status === 204) {
-                var verify = new XMLHttpRequest();
-                verify.open("GET", yafcViewUrl, false);
-                verify.send();
-                if ((verify.status === 0 || verify.status === 200) && verify.responseText === text)
-                    return true;
-            }
-            console.log("yafc: view publish could not be verified; PUT status " + xhr.status);
-        } catch (e) {
-            console.log("yafc: view publish failed: " + e);
-        }
-        return false;
+            return (xhr.status === 0 || xhr.status === 200 || xhr.status === 204) &&
+                    yafcRead(yafcViewUrl) === text;
+        } catch (e) { return false; }
+    }
+
+    function yafcPublishView(v) {
+        var e = yafcViews[v];
+        if (!yafcSession || e === undefined || e.ford !== yafcFordView ||
+                showFrontCamera !== (v.indexOf("front") === 0) || yafcSeq >= 999999999) return false;
+        var hero = yafcViews.rear360;
+        // compose=1 only for views the native should reshape. 360-only views
+        // use the stock geometry and set compose=0 so the native acknowledges
+        // without changing the window. The native never composes for a view
+        // whose published compose flag is 0.
+        var compose = (e.compose === true || e.cfg === "rear360" || e.cfg === "front360") ? "1" : "0";
+        var text = yafcSession + (++yafcSeq) + ";" + compose + ";" +
+                [e.camSrc || hero.camSrc, e.camDst || hero.camDst,
+                 e.baySrc || hero.baySrc, e.bayDst || hero.bayDst].join(",") + "\n";
+        if (!yafcPut(text)) return false;
+        yafcRequest = text;
+        yafcRequestedKey = v;
+        yafcSentAt = Date.now();
+        return true;
     }
 
     property string yafcPendingView: ""
@@ -193,19 +225,18 @@
     property bool yafcZoomSwitch: false
     property int yafcZoomExtraMs: 300
     property int yafcCoverMs: 700
-    property bool yafcWasFront: false
     readonly property int yafcFordView: AL2HMIBridge.rvcSource.multicameraShowing
-    onYafcFordViewChanged: yafcCommitPendingView()
+    onYafcFordViewChanged: yafcFollowFord()
 
     function yafcApplyLayout(v) {
         var e = yafcViews[v];
-        if (!yafcPublishView(e)) return false;
         yafcViewKey = v;
         yafcView = e.cfg;
         yafcSensors = e.sensors === true;
         yafcLook(e);
         yafcZoom = e.zoom === true;
         yafcZoomTries = 0;
+        yafcShown = true;
         yafcSyncZoom();
         return true;
     }
@@ -235,42 +266,82 @@
         yafcCoverTimer.restart();
     }
 
-    function yafcCommitPendingView() {
-        var v = yafcPendingView;
-        if (!yafcShown || v === "" || yafcViews[v].ford !== yafcFordView) return;
-        if (!yafcApplyLayout(v)) return;
-        yafcPendingView = "";
-        yafcViewTimeout.stop();
-        if (yafcCover) yafcCoverDwell();
+    function yafcStock() {
+        yafcShown = false;
+        yafcPanelOpen = false;
+        yafcZoomTimer.stop();
+        yafcCoverTimer.stop();
+        if (yafcRequest && yafcRead(yafcViewUrl) === yafcRequest)
+            yafcPut(yafcSession + yafcSeq + ";off\n");
+        yafcRequest = "";
+        yafcLastAck = "";
+        yafcRequestedKey = "";
     }
 
-    // No report in time: lay out whatever Ford actually shows. Never leaves the
-    // cover up for good.
+    function yafcFollowFord() {
+        if (!yafcSession) return;
+        if (yafcRequestedKey && yafcViews[yafcRequestedKey].ford === yafcFordView &&
+                showFrontCamera === (yafcRequestedKey.indexOf("front") === 0)) return;
+        yafcStock();
+        var key = yafcPendingView || yafcDefaultKey(showFrontCamera);
+        if (yafcViews[key].ford !== yafcFordView && !yafcPendingView) {
+            var keys = showFrontCamera ? ["front360", "front", "frontwide"] : ["rear360", "rear", "wide"];
+            for (var i = 0; i < keys.length; i++)
+                if (yafcViews[keys[i]].ford === yafcFordView) key = keys[i];
+        }
+        if (yafcViews[key].ford === yafcFordView && !yafcPublishView(key)) yafcStop();
+    }
+
+    function yafcPoll() {
+        if (!yafcSession) return;
+        if (!yafcLoadConfig() || yafcRead(yafcSessionUrl) !== yafcSession) { yafcStop(); return; }
+        if (!yafcRequest) return;
+        var elapsed = Date.now() - yafcSentAt;
+        if (elapsed < 0 || elapsed >= 400) { yafcStop(); return; }
+        var key = yafcRequestedKey;
+        if (yafcViews[key].ford !== yafcFordView) { yafcFollowFord(); return; }
+        var reply = yafcRead(yafcReadyUrl);
+        if (reply !== yafcRequest) {
+            if (yafcShown && reply !== yafcLastAck) yafcStop();
+            return;
+        }
+        // Two advancing replies are required on entry. A leftover file (even
+        // for this PID) cannot both answer and renew a request.
+        var confirmed = yafcLastAck !== "";
+        yafcLastAck = reply;
+        if (!yafcPublishView(key)) { yafcStop(); return; }
+        if (confirmed && !yafcShown) {
+            yafcApplyLayout(key);
+            yafcPendingView = "";
+            yafcViewTimeout.stop();
+            if (yafcCover) yafcCoverDwell();
+            if (!yafcUserPicked) yafcDefaultTimer.restart();
+        }
+    }
+
     function yafcReconcile() {
-        if (!yafcShown) return;
-        yafcPendingView = "";
-        var k = yafcViews[yafcViewKey].ford === yafcFordView ? yafcViewKey : "";
-        for (var n in yafcViews) if (k === "" && yafcViews[n].ford === yafcFordView) k = n;
-        if (k !== "" && yafcApplyLayout(k) && yafcCover) yafcCoverDwell();
-        else yafcCover = false;
+        // No matching Ford report or composition reply: return control to Ford.
+        yafcStop();
     }
 
     function yafcSelectView(v) {
         var e = yafcViews[v];
         if (!yafcShown || e === undefined || yafcCover) return;
+        var reply = yafcRead(yafcReadyUrl), elapsed = Date.now() - yafcSentAt;
+        if (!yafcLoadConfig() || yafcRead(yafcSessionUrl) !== yafcSession ||
+                elapsed < 0 || elapsed >= 400 || (reply !== yafcLastAck && reply !== yafcRequest)) {
+            yafcStop();
+            return;
+        }
         yafcUserPicked = true;
         yafcDefaultTimer.stop();
         yafcZoomSwitch = yafcZoom && e.zoom !== true;
         yafcPendingView = v;
-        yafcPanelOpen = false;
-        if (yafcFordView === e.ford) {
-            if (yafcCoverMs > 0 && (e.zoom === true || yafcZoom)) { yafcCover = true; yafcViewTimeout.restart(); }
-            yafcCommitPendingView();
-        } else {
-            if (yafcCoverMs > 0) yafcCover = true;
-            yafcViewTimeout.restart();
-            _hmirvcController.selectRVCView(e.ford);
-        }
+        yafcStock();
+        yafcCover = yafcCoverMs > 0 && (e.ford !== yafcFordView || e.zoom === true || yafcZoom);
+        yafcViewTimeout.restart();
+        if (yafcFordView === e.ford) yafcFollowFord();
+        else _hmirvcController.selectRVCView(e.ford);
     }
 
     // Only Settings persists preferences. Reset the RAM selection on close and
@@ -283,41 +354,39 @@
         var pref = front ? yafcFrontViewPref : yafcRearViewPref;
         return map[pref] !== undefined ? map[pref] : (front ? "front360" : "rear360");
     }
-    function yafcApplyDefault(front, callFord) {
-        if (!yafcShown) return false;
-        var key = yafcDefaultKey(front);
-        if (!yafcApplyLayout(key)) return false;
-        var e = yafcViews[key];
-        if (callFord && AL2HMIBridge.rvcSource.multicameraShowing !== e.ford)
-            _hmirvcController.selectRVCView(e.ford);
-        return true;
+    function yafcApplyDefault() {
+        var key = yafcDefaultKey(showFrontCamera);
+        if (yafcShown && !yafcUserPicked && key !== yafcViewKey) yafcSelectView(key);
+    }
+
+    function yafcStop() {
+        if (!yafcSession) return;
+        yafcStock();
+        yafcDefaultTimer.stop();
+        yafcViewTimeout.stop();
+        yafcPendingView = "";
+        yafcCover = false;
+        yafcZoomSwitch = false;
+        yafcSession = "";
     }
 
     function yafcVisibleChanged(vis) {
-        if (vis && !yafcShown) {
-            if (!yafcLoadConfig()) return;
-            yafcShown = true;
-            yafcWasFront = showFrontCamera;
-            yafcUserPicked = false;
-            if (!yafcApplyDefault(yafcWasFront, false)) {
-                yafcShown = false;
-                return;
-            }
-            yafcDefaultTimer.restart();
-        } else if (!vis && yafcShown) {
-            yafcPanelOpen = false;
-            yafcDefaultTimer.stop();
-            yafcZoomTimer.stop();
-            yafcPendingView = "";
-            yafcViewTimeout.stop();
-            yafcCoverTimer.stop();
-            yafcCover = false;
-            yafcZoomSwitch = false;
-            // Keep the next opening default in RAM without changing Ford's zoom.
-            yafcPublishView(yafcViews[yafcDefaultKey(yafcWasFront)]);
-            yafcShown = false;
+        if (!vis) { yafcStop(); return; }
+        if (yafcSession || !yafcLoadConfig()) return;
+        var session = yafcRead(yafcSessionUrl);
+        if (!/^[1-9][0-9]*\.[0-9]+\.[0-9]+;$/.test(session)) return;
+        var records = [yafcRead(yafcViewUrl), yafcRead(yafcReadyUrl)];
+        for (var i = 0; i < records.length; i++) {
+            if (records[i].indexOf(session) !== 0) continue;
+            var seq = /^([0-9]{1,9});/.exec(records[i].substring(session.length));
+            if (seq) yafcSeq = Math.max(yafcSeq, Number(seq[1]));
         }
+        yafcSession = session;
+        yafcUserPicked = false;
+        yafcFollowFord();
     }
+
+    Timer { interval: 100; repeat: true; running: yafcSession !== ""; onTriggered: yafcPoll() }
 
     Component.onCompleted: yafcVisibleChanged(visible)
 
@@ -341,6 +410,6 @@
     Binding { target: cancelButton; property: "visible"; value: yafcCancelShown; when: yafcShown }
     Binding { target: textLabel; property: "visible"; value: showZoomButton && !yafcHideChrome; when: yafcShown }
 
-    onShowFrontCameraChanged: if (yafcShown) { yafcWasFront = showFrontCamera; if (showFrontCamera) yafcPanelOpen = false; }
+    onShowFrontCameraChanged: if (yafcSession) { yafcStop(); yafcVisibleChanged(visible); }
 
     readonly property bool yafcCancelShown: (showCancelButton && !ViewController.qrvc && cameraViewActivatedByReverseGear) || showCancelButtonBoundaryAlertRVC

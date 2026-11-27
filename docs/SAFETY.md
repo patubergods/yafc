@@ -7,10 +7,11 @@ may trust it. Everything below follows from that.
 
 ## The position
 
-- YAFC does not replace the camera program. The worst ordinary failure is that the factory picture
-  appears unchanged, or does not appear until the next boot.
-- Every failed identity check means the library does nothing. Every failed write check means the
-  installer stops and leaves the unit's own library in place.
+- YAFC does not replace the camera program, but it changes the camera's library slot and HMI.
+  A failed or interrupted install can leave either component changed or prevent services from
+  loading. The recovery path is not guaranteed to be available after a loader failure.
+- A failed identity check makes the native hook stand down; it does not by itself prove that the
+  HMI returns to stock. A failed install can leave a persistent change. See [RECOVERY.md](RECOVERY.md).
 - A change to the picture is a real change to a safety system. It is tried on a stationary vehicle
   with the brake held, in one view at a time, with the undo path already known.
 
@@ -23,11 +24,9 @@ may trust it. Everything below follows from that.
 
 ## The hidden risk
 
-A library that stops the loader from working would take several services with it - about twenty
-processes load the library, and the camera is one. That is why the identity checks run before
-anything else, why the library exports no Screen symbol of its own, and why the install writes a
-probe result before it reboots anything. If the probe fails, the unit's own library goes back
-immediately.
+A library that stops the loader from working could affect other services as well as the camera.
+The installer checks a loader probe, but neither the probe nor host tests prove that a real
+vehicle will boot or recover after an interrupted write.
 
 ## Before a first trial
 
