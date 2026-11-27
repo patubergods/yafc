@@ -129,6 +129,26 @@ A previous version composed the layout by writing into buffer rows 480..959. The
 writes into that buffer too (measured: source rows 0..3 land at buffer rows 483..486). Those rows
 are not ours. Nothing in the library writes into a buffer any more, and CAMERA-PIPELINE.md says so.
 
+### The session/ready handshake
+
+The library and the HMI popup coordinate over tmpfs files:
+
+1. The library writes `/fs/tmpfs/yafc-session` (`PID.monotonic_sec.monotonic_nsec;`) at start.
+2. The popup reads the session on entry and prefixes every mailbox record to
+   `/fs/tmpfs/yafc-view` with it: `<session><seq>;<compose>;<16 rects>`.
+3. The library accepts a request only when the session matches and echoes it to
+   `/fs/tmpfs/yafc-ready` after a successful Screen post with verified geometry.
+4. The popup composes its layout only after two advancing ready replies. A mismatch, missing
+   session, or expired LEASE_MS returns the popup to stock.
+
+**Limits:** A ready file proves `screen_post_window` returned success and the compositor
+accepted the geometry properties. It does **not** prove the display painted the result, or that
+a late-created bay ever appeared. QML timers stall with the render thread; a stalled HMI poll
+is not detected by the native. The library's lease expiry is local-only: there is no atomic
+cross-process liveness proof. `DISABLE` prevents new requests but does not kill an active lease.
+
+**UNPROVEN:** the full handshake, `LEASE_MS` expiry, and the two-ack gate on a radio.
+
 ## The configuration
 
 `/fs/rwdata/yafc/camera.conf` is a flat `key=value` file, at most 4095 bytes, read from the start
@@ -173,15 +193,29 @@ known restore, is the next evidence step ([TESTING.md](TESTING.md)).
 ## The installer
 
 `installer/yafc-install.sh` runs under the jailbreak's USB hook. Exactly one marker selects a
-mode: `RUN-YAFC-REHEARSE`, `RUN-YAFC-INSTALL`, `RUN-YAFC-REMOVE`, `RUN-YAFC-REMOVE-HMI`, or
-`RUN-YAFC-DISABLE`. Install preserves the unit's own library, probes the replacement, and rolls
-the library back if the probe fails. It builds the HMI image from the unit's own stock files
-and publishes only a verified image. Rehearsal writes the current slot bytes and checks an HMI
-image without publishing it. Removal replays only the mount layers that remain. See the
-[write order and receipts](INSTALL.md).
+mode: `RUN-YAFC-REHEARSE`, `RUN-YAFC-INSTALL`, `RUN-YAFC-REMOVE`, `RUN-YAFC-REMOVE-HMI`,
+`RUN-YAFC-RECOVER`, or `RUN-YAFC-DISABLE`. Install is all-or-nothing: it journals the previous
+state, then writes and probes the slot library, publishes the HMI image, and commits the
+ownership record only after every check passes. A failure before the slot write (exit 8/9/10)
+leaves the slot untouched. A failure after the slot write rolls back to the journaled previous
+library bytes, or retains the journal for `RUN-YAFC-RECOVER` if the rollback cannot be verified.
+
+Rehearsal writes the current slot bytes and checks an HMI image without publishing it or seeding
+configuration. Removal replays only the mount layers that remain. Recovery restores the
+journaled previous state from an interrupted request and refuses when the journal does not
+authenticate, a file digest differs, or a layer is busy.
+
+Only the one recorded stock digest is accepted as an unowned slot; other firmware is refused
+until its digest is independently verified. An overlay that shadows a YAFC target path is
+refused. Receipts are per-request, keyed by a unique request ID in the `.running` marker.
+See the [write order and receipts](INSTALL.md).
 
 Host tests cover these paths with mock mounts. Any run on a unit from this repository is
 **UNPROVEN**.
+
+**UNPROVEN** on a radio: the `DL_DEBUG=libs` trace format, `dladdr` paths for GOT symbols,
+the `-o before` mount flag ordering, file-image mount listing, the second read-only inspection
+mount, and busy layers after a restart.
 
 ## See also
 

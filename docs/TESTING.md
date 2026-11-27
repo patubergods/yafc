@@ -56,16 +56,25 @@ it. Record the result either way.
 | Rung | What runs | What it can prove |
 |---|---|---|
 | Host suite | the tables above | logic, arithmetic, write order, refusals |
-| Probe on the unit | `slotprobe` in the slot | the loader binds us, and what it binds |
+| Probe on the unit | `slotprobe` in the slot | the loader binds us, and what it binds; the `DL_DEBUG=libs` trace format and `dladdr` paths |
 | Rehearsal | `RUN-YAFC-REHEARSE` | re-writes the current slot bytes and builds and reads back the HMI image without publishing; **UNPROVEN** on a unit |
-| Real install | `RUN-YAFC-INSTALL` | the library and USB HMI image on that unit - **UNPROVEN** until run on a unit |
+| Real install | `RUN-YAFC-INSTALL` | the library and USB HMI image on that unit; the session/ready handshake; the `-o before` mount order, file-image mount listing, and second read-back mount - **UNPROVEN** until run on a unit |
+| Recovery | `RUN-YAFC-RECOVER` | the journaled state is restored from an interrupted request - **UNPROVEN** until run on a unit |
 
 ## Only a unit can show
 
 - whether the composed picture is right, on that vehicle, in that view;
 - whether the camera keeps posting without a stall through a mode switch;
 - the real HMI values for 360, Zoomed View and ship-config shapes;
-- whether the counter fires under a real failing boot.
+- whether the counter fires under a real failing boot;
+- whether the `DL_DEBUG=libs` trace format matches the probe parser;
+- whether `dladdr` returns the expected paths for GOT symbols;
+- whether the `-o before` mount flag arranges layers in the expected order;
+- whether file-image mount listing (`mount` output) matches the mock;
+- whether the second read-only inspection mount works on a loopback-backed image;
+- whether busy layers after a restart block mount replay;
+- whether the session/ready handshake completes with two advancing acknowledgements;
+- whether a stalled QML render thread is detectable by the native's `LEASE_MS` expiry.
 
 ## See also
 

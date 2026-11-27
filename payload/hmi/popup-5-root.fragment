@@ -23,9 +23,7 @@
                 id: yafcDefaultTimer
                 interval: 300
                 repeat: false
-                onTriggered: {
-                    if (yafcShown && !yafcUserPicked) yafcApplyDefault(showFrontCamera, true);
-                }
+                onTriggered: yafcApplyDefault()
             }
         },
         // Black backdrop: everything the live video, the 360 and the sensor

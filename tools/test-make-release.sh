@@ -1,10 +1,10 @@
 #!/bin/sh
 # Host test for make-release.sh. It runs the assembly with a stub payload
-# (YAFC_SKIP_BUILD=1), so it needs no cross toolchain, and checks the two zips:
-# one marker each and the right one, the stick layout at the zip root, no wrapper
-# directory, no marker left running, no private token in the text, START-HERE.txt
-# short and honest, and SHA256SUMS that verify. It builds twice and compares the
-# hashes, so a change that makes the zips non-deterministic fails here.
+# (YAFC_SKIP_BUILD=1), so it needs no cross toolchain. The probe starts without
+# an execute bit, and USB assembly must not need chmod. Check two zips, each
+# with one marker, the stick layout at the root, no private tokens, concise
+# instructions, all source fragments and both checksum manifests. Build twice
+# with different umasks to check reproducibility.
 #
 # usage: sh tools/test-make-release.sh
 # exit 0 all cases pass, 1 a case failed, 2 setup problem.
@@ -21,32 +21,52 @@ WORK=$(mktemp -d) || { echo "setup: mktemp failed"; exit 2; }
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
 mkdir -p "$WORK/bin"
-printf 'stub slot library with /fs/tmpfs/yafc-view\n' > "$WORK/bin/libyafc.so"
+printf '%s\n' /fs/tmpfs/yafc-view /fs/tmpfs/yafc-session /fs/tmpfs/yafc-ready > "$WORK/bin/libyafc.so"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/slotprobe"
-chmod 755 "$WORK/bin/slotprobe"
+chmod 644 "$WORK/bin/slotprobe" || exit 2
+mkdir "$WORK/no-chmod" || exit 2
+cat > "$WORK/no-chmod/chmod" <<'SH'
+#!/bin/sh
+echo "USB filesystem does not support chmod" >&2
+exit 1
+SH
+chmod 755 "$WORK/no-chmod/chmod" || exit 2
 
 pass=0
 fail=0
 ok() { pass=$((pass + 1)); echo "ok   $1"; }
 no() { fail=$((fail + 1)); echo "FAIL $1"; }
 
-# build DIST: assemble with the stub payload, quietly
-build() {
-  YAFC_SKIP_BUILD=1 YAFC_LIB=$WORK/bin/libyafc.so YAFC_PROBE=$WORK/bin/slotprobe \
+# build DIST UMASK [LIB]: assemble with a stub payload, quietly
+build() (
+  umask "$2"
+  PATH="$WORK/no-chmod:$PATH" \
+    YAFC_SKIP_BUILD=1 YAFC_LIB=${3:-$WORK/bin/libyafc.so} YAFC_PROBE=$WORK/bin/slotprobe \
     YAFC_OUT=$1 sh "$MAKE" 2.3.4 > "$WORK/build.log" 2>&1
-}
+)
 
 mkdir -p "$WORK/a" || exit 2
 : > "$WORK/a/YAFC-2.3.4-rehearse.zip" || exit 2
-if build "$WORK/a"; then ok "make-release.sh assembles with a stub payload"; else
-  no "make-release.sh assembles with a stub payload"; sed 's/^/     /' "$WORK/build.log"; fi
-if build "$WORK/b"; then ok "make-release.sh runs twice"; else
-  no "make-release.sh runs twice"; sed 's/^/     /' "$WORK/build.log"; fi
+if build "$WORK/a" 022; then ok "release assembles with a non-executable probe and no chmod"; else
+  no "release assembles with a non-executable probe and no chmod"; sed 's/^/     /' "$WORK/build.log"; fi
+if build "$WORK/b" 077; then ok "release assembles with a stricter umask"; else
+  no "release assembles with a stricter umask"; sed 's/^/     /' "$WORK/build.log"; fi
+for missing in session ready; do
+  grep -Fvx "/fs/tmpfs/yafc-$missing" "$WORK/bin/libyafc.so" > "$WORK/stale.so" || exit 2
+  if ! build "$WORK/stale-$missing" 022 "$WORK/stale.so" &&
+     grep -Fq "lacks the HMI mailbox protocol (/fs/tmpfs/yafc-$missing)" "$WORK/build.log" &&
+     [ ! -e "$WORK/stale-$missing/YAFC-2.3.4-install.zip" ]; then
+    ok "release rejects a stale library missing yafc-$missing"
+  else
+    no "release rejects a stale library missing yafc-$missing"; sed 's/^/     /' "$WORK/build.log"
+  fi
+done
 
 # check DIST: every assertion about the zips, in one python pass
 check() {
-  python3 - "$1" <<'PY'
+  python3 - "$1" "$here/../payload/hmi" "$WORK/bin" <<'PY'
 import hashlib, os, re, sys, zipfile
+from pathlib import Path
 
 dist = sys.argv[1]
 fails = []
@@ -60,6 +80,15 @@ VARIANTS = {"install": "INSTALL", "uninstall": "REMOVE"}
 FORBIDDEN = re.compile(r"\bpat\b|PAT_|pat-rvc|patcam")
 HOSTPATH = re.compile(r"/home/|/Users/|/mnt/c/|[A-Za-z]:[\\/](?:Users|home|Windows)")
 TEXT_MAX = 25
+DOCS = "https://github.com/patubergods/yafc/blob/main/docs/"
+fragments = {"yafc-payload/hmi/" + p.name: p.read_bytes()
+             for p in Path(sys.argv[2]).glob("*.fragment")}
+if not fragments:
+    bad("no source fragments found")
+probe = "yafc-payload/slotprobe"
+library = "yafc-payload/libyafc.so"
+stub_payload = {name: (Path(sys.argv[3]) / Path(name).name).read_bytes()
+                for name in (probe, library)}
 
 expected_zips = {"YAFC-2.3.4-%s.zip" % v for v in VARIANTS}
 actual_zips = {name for name in os.listdir(dist) if name.endswith(".zip")}
@@ -70,6 +99,7 @@ else:
 
 names = {}
 blobs = {}
+modes = {}
 for variant in VARIANTS:
     z = os.path.join(dist, "YAFC-2.3.4-%s.zip" % variant)
     if not os.path.isfile(z):
@@ -78,10 +108,14 @@ for variant in VARIANTS:
     with zipfile.ZipFile(z) as zf:
         names[variant] = zf.namelist()
         blobs[variant] = {n: zf.read(n) for n in zf.namelist()}
+        modes[variant] = {info.filename: (info.external_attr >> 16) & 0o777
+                          for info in zf.infolist()}
     good("%s zip opens" % variant)
 
 for variant, entries in names.items():
     files = blobs[variant]
+    if len(entries) != len(files):
+        bad("%s zip repeats an entry" % variant)
     want = "RUN-YAFC-" + VARIANTS[variant]
     root = [n for n in entries if "/" not in n]
     markers = [n for n in root if n.startswith("RUN-YAFC-")]
@@ -104,25 +138,32 @@ for variant, entries in names.items():
     # SyncMyMod/.yafc-usb ships on purpose: it is make-usb.sh's ownership stamp, and a
     # stick without it cannot be refreshed by the script later. It is empty and hidden.
     required = ["SyncMyMod/autoinstall.sh", "SyncMyMod/.yafc-usb", "yafc-install.sh",
-                "yafc-payload/libyafc.so", "yafc-payload/slotprobe",
+                library, probe, "yafc-payload/README.txt", "yafc-payload/SHA256SUMS",
                 "yafc-payload/camera.conf", "tools/apply-hmi-fragments.sh",
-                "START-HERE.txt", want]
+                "START-HERE.txt", "DISCLAIMER.txt", want]
     missing = [r for r in required if r not in entries]
     if missing:
         bad("%s zip missing %s" % (variant, missing))
     else:
         good("%s zip has the stick layout" % variant)
-    if not any(n.startswith("yafc-payload/hmi/") and n.endswith(".fragment") for n in entries):
-        bad("%s zip has no HMI fragment" % variant)
+    archived_fragments = {n: files[n] for n in entries if n.startswith("yafc-payload/hmi/")}
+    if archived_fragments != fragments:
+        bad("%s zip fragment names or bytes differ from the source" % variant)
     else:
-        good("%s zip has HMI fragments" % variant)
+        good("%s zip includes every source fragment byte for byte" % variant)
+    if any(files.get(name) != content for name, content in stub_payload.items()):
+        bad("%s zip altered the native payload bytes" % variant)
+    if modes[variant].get(probe) != 0o644:
+        bad("%s zip should store slotprobe as non-executable data" % variant)
+    for script in ("SyncMyMod/autoinstall.sh", "yafc-install.sh", "tools/apply-hmi-fragments.sh"):
+        if modes[variant].get(script) != 0o755:
+            bad("%s zip has the wrong shell script mode for %s" % (variant, script))
     payload_sums = files.get("yafc-payload/SHA256SUMS", b"").decode("utf-8").splitlines()
     payload_hashes = {path: digest for digest, path in
                       (line.split(None, 1) for line in payload_sums)}
     covered = {"SyncMyMod/autoinstall.sh", "yafc-install.sh", "tools/apply-hmi-fragments.sh",
-               "yafc-payload/libyafc.so", "yafc-payload/slotprobe", "yafc-payload/camera.conf"}
-    covered.update(n for n in entries if n.startswith("yafc-payload/hmi/"))
-    if set(payload_hashes) != covered or any(
+               library, probe, "yafc-payload/camera.conf"} | fragments.keys()
+    if len(payload_sums) != len(covered) or set(payload_hashes) != covered or any(
             path not in files or hashlib.sha256(files[path]).hexdigest() != digest
             for path, digest in payload_hashes.items()):
         bad("%s zip payload SHA256SUMS does not match packaged files" % variant)
@@ -140,7 +181,8 @@ for variant, entries in names.items():
     else:
         good("%s START-HERE.txt opens with the WARNING block" % variant)
     phrases = ("used only on a 2020 Explorer ST", "not yet field-tested", "FMods",
-               "UNKNOWN", "parked", "at your own risk", "warranty", "DISCLAIMER.md")
+               "UNKNOWN", "parked", "at your own risk", "warranty", DOCS + "DISCLAIMER.md",
+               DOCS + "RECOVERY.md", "request ID", "Do not retry.")
     if variant == "install":
         phrases += ("fullscreen rear video appeared early", "The 360 view",
                     "parking sensors and view-selection buttons appeared later")
@@ -151,6 +193,12 @@ for variant, entries in names.items():
         bad("%s START-HERE.txt does not name its own .running marker" % variant)
     else:
         good("%s START-HERE.txt names its own .running marker" % variant)
+
+    readme = files.get("yafc-payload/README.txt", b"").decode("utf-8", "replace")
+    for doc in ("INSTALL.md", "ARCHITECTURE.md", "CAMERA-PIPELINE.md", "RECOVERY.md",
+                "HMI-PATCH.md"):
+        if DOCS + doc not in readme:
+            bad("%s packaged README lacks a standalone link to %s" % (variant, doc))
 
     dirty = False
     for name, blob in files.items():

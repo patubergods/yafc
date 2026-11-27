@@ -37,7 +37,7 @@ It refuses an older slot binary that lacks the view mailbox. Rebuild before stag
   RUN-YAFC-*                    you create exactly one
 ```
 
-## The five modes
+## The six modes
 
 Create **exactly one** marker at the stick root. The dispatcher refuses if it finds more than one.
 
@@ -47,11 +47,58 @@ Create **exactly one** marker at the stick root. The dispatcher refuses if it fi
 | `RUN-YAFC-INSTALL` | Initializes `camera.conf` if absent, installs and probes the library, then builds and publishes the HMI image. |
 | `RUN-YAFC-REMOVE` | Deletes the HMI image, then restores the unit's own library and deletes the preserved copy if present. |
 | `RUN-YAFC-REMOVE-HMI` | Deletes the HMI image only. The library is untouched. |
+| `RUN-YAFC-RECOVER` | Restores the journaled previous state from an interrupted install or remove. Refuses when the journal does not authenticate, a file is not at its recorded digest, or a layer is busy. The marker must be on a fresh stick (the `.running` file from the failed request is on the old stick, which does nothing). |
 | `RUN-YAFC-DISABLE` | Writes the kill switch. No mount work. |
 
 The design has been used on one 2020 Explorer ST with private tooling. **UNPROVEN:** the
 packaged installer, including its HMI image path, has not been run on a radio. Host mocks do
 not establish that it works on a unit.
+
+**UNPROVEN:** the following QNX behaviours on a radio:
+- the `DL_DEBUG=libs` loader trace format used by the probe;
+- `dladdr` returning the expected paths for GOT symbols;
+- the `-o before` mount flag arranging image layers in the expected order;
+- the file-image mount listing (`mount` output for loopback-backed images);
+- the second read-only inspection mount of the built image;
+- busy layers after a restart, when the installer replays the mount list.
+
+### The unowned-stock digest limit
+
+Only the one recorded stock build of `libRCN_DiagnosticsLib.so` is accepted as an unowned slot
+(digest `af2278a253732f8f641c06c5279c3bbff48e0acdf439a11c36ddf6e440e62481`). An existing
+preserved copy is never adopted. Other firmware or units are refused until their stock digest is
+independently verified and added here. This is one radio's build.
+
+### Shadowing-overlay refusal
+
+Before any write, the installer inspects every other `overlay*.img` file under `/fs/images`.
+Each is mounted read-only for the duration of the check. If any provides or obscures
+one of the four QML target files, the slot library path, or the preserved-copy path, the
+installer refuses. An overlay that shadows a YAFC target cannot be installed beside it.
+The inspection mount is read-only and is unmounted before any write begins.
+
+### Request-ID receipts
+
+The dispatcher writes a unique request ID (timestamp format) into the `.running` marker before
+starting the installer. Every receipt is per-request: the report directory is
+`yafc-install/request-<id>/`, with its own `install.log`, `DONE` and `FAILED`. Every receipt
+line includes the request ID, the mode, and the stage it was written at. An old receipt from a
+different request never passes for the current one. The marker is consumed (deleted) only after
+`DONE` is written; a failed stick keeps its `.running` file and does nothing on reinsertion.
+
+### The session/ready handshake
+
+The camera library writes `/fs/tmpfs/yafc-session` (`PID.monotonic_sec.monotonic_nsec;`) at
+start. The HMI popup reads that session on entry and prefixes every mailbox record to
+`/fs/tmpfs/yafc-view` with it: `<session><seq>;<compose>;<16 rects>`. The library echoes the
+accepted record in `/fs/tmpfs/yafc-ready` after a successful Screen post with verified
+geometry. The popup composes its layout only after two advancing ready replies.
+
+A ready file proves that `screen_post_window` returned success and the compositor accepted the
+geometry properties. It does **not** prove that the display painted the result, that a late-created
+bay ever appeared, or that the HMI render thread is not stalled. A QML timer stall is not
+detected by the native. The library's lease expires locally after `LEASE_MS` with no atomic
+cross-process liveness proof. `DISABLE` prevents new requests but does not kill an active lease.
 
 ## What the installer does, in order
 
@@ -73,10 +120,13 @@ not establish that it works on a unit.
 9. Replays and checks the mount list, excluding the YAFC layer if removal deleted it.
    Checks the recovery scripts again before writing the receipt.
 
-An HMI failure before the rename leaves the previous image, if any, untouched. An install that
-passed the loader probe but could not publish the HMI reports `FAILED` with `HMI only` and the
-specific error: 8 for a missing stock file, 9 for fragment refusal, 10 for image build or read-back,
-12 for publication. A later failure reports the step that actually failed; `DONE` is not written.
+Install is all-or-nothing. The slot library is written and probed only after the journal is
+persisted and before the image is published. A failure before the slot write (exit 8 for a missing
+stock file, 9 for fragment refusal, 10 for image build or read-back) leaves the slot untouched.
+A failure after the slot write causes a rollback to the journaled previous library bytes, or
+retains the journal for `RUN-YAFC-RECOVER` if the rollback cannot be verified. Exit 12 means the
+image could not be published after a successful probe; the slot is rolled back. There is no
+"library installed but HMI not published" state. `DONE` is never written after a failure.
 
 A fresh image enters the mount list at the next boot. On upgrade, if the old image path was
 already mounted, replay mounts the replacement at that path. Reboot to reload the HMI and library.
