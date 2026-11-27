@@ -102,14 +102,14 @@ case "${1-}" in
           case "$d" in /*) ;; *) d=$YAFC_IMGDIR/$d ;; esac
         fi
         if [ -n "${FAKE_BARE_MOUNT-}" ]; then
-          echo "$d on $SLOT_MP type qnx6"
+          echo "$d on $SLOT_MP type qnx6 "
         else
           echo "$d on $SLOT_MP type qnx6 ($flags)"
         fi
       done < "$S"
       if [ -f "$FAKE/image-mode" ]; then
         if [ -n "${FAKE_BARE_MOUNT-}" ]; then
-          echo "$(cat "$FAKE/image-src") on $YAFC_SCRATCH/mnt type qnx6"
+          echo "$(cat "$FAKE/image-src") on $YAFC_SCRATCH/mnt type qnx6 "
         else
           echo "$(cat "$FAKE/image-src") on $YAFC_SCRATCH/mnt type qnx6 ($(cat "$FAKE/image-mode"))"
         fi
@@ -123,6 +123,14 @@ case "${1-}" in
   -b) if [ "$#" = 6 ] && [ "$6" = "$YAFC_SCRATCH/mnt" ]; then
         [ "$2 $3 $4" = "-r -t qnx6" ] && [ -s "$5" ] || exit 1
         [ ! -e "$FAKE/image-mode" ]
+        # Mounting an image that is already mounted on the slot fails with EBUSY
+        # on the radio, so only unmounted candidates may be inspected.
+        if [ -f "$S" ]; then
+          while IFS= read -r d; do
+            case "$d" in /*) ;; *) d=$YAFC_IMGDIR/$d ;; esac
+            [ "$d" != "$5" ] || exit 1
+          done < "$S"
+        fi
         tar -xf "$5" -C "$6"
         if [ -n "${FAKE_READBACK_CORRUPT-}" ] && [ "$5" = "$(cat "$FAKE/backing" 2>/dev/null)" ]; then
           printf damaged >> "$6/fordhmi/qml/+10inchP/Root.qml"
@@ -1058,22 +1066,25 @@ def main() -> int:
                   and {p.name: p.read_bytes() for p in g.imgdir.iterdir()} == img_before
                   and not g.journal(), g)
 
-        # 39. another boot overlay providing a target path is refused before any mount work
+        # 39. another boot overlay providing a target path is refused. The
+        # inspection now runs after the mount stack is reduced, so the refusal
+        # happens with the layers down; the trap restores the exact order and
+        # nothing is written.
         for victim, rel in ((OVL[1], "fordhmi/qml/+10inchP/Root.qml"),
                             (OVL[0], "apps/usr/lib/libRCN_DiagnosticsLib.so"),
                             ("overlay_zz.img", "fordhmi/qml/hmirvc/+10inchP/RVCPopup.qml")):
             g.reset(images=[victim], overlays={victim: {rel: "shadow\n"}})
             g.arm("RUN-YAFC-INSTALL")
             r = g.dispatch()
-            check(f"39 {victim} shadows {rel}: refused, nothing written or unmounted",
+            check(f"39 {victim} shadows {rel}: refused, nothing written, layer order restored",
                   r.returncode == 3 and g.failed() and g.state() == fresh and not g.journal()
                   and "shadows" in g.failed_text() and g.stack() == OVL + [BASE]
-                  and not any(o.startswith((f"umount {g.mp}", "mount -uw", "dinit")) for o in g.ops())
+                  and not any(o.startswith(("mount -uw", "dinit")) for o in g.ops())
                   and not (g.fake / "scratch").exists(), g)
 
         # 40. TERM at each phase: the trap rolls back to the exact previous state
         points = (
-            (f"mount -b -r -t qnx6 {g.imgdir}/{OVL[0]}", "overlay-check"),
+            (f"mount -b -r -t qnx6 {g.imgdir}/{OVL[0]}", "overlay-inspect"),
             (f"umount {g.mp}", "mount-reduction"),
             ("dinit", "hmi-build"),
             ("/.installer-plan.", "journal"),

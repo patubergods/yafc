@@ -24,9 +24,12 @@ Check every line. If one is missing, stop.
 - **A Ford SYNC 3 radio with the FMods jailbreak, USB installer and FMods Tools already set up**
   ([fmods.net](https://www.fmods.net/)). YAFC does not install any of them. The FMods USB hook
   starts YAFC when you plug in the drive. No fullscreen CarPlay or Android Auto mod is required.
-- **A USB flash drive.** Use the kind of drive and the format you already use with FMods. Ford's
-  SYNC update guides and some SYNC 3 mod pages recommend exFAT, but YAFC has no format of its own.
-  **Formatting erases the drive.** Back up your files and check the drive's name and size first.
+- **A USB flash drive with an MBR partition table, formatted exFAT or FAT32.** SYNC refuses a
+  drive whose partition table is GPT, with its own "USB not supported" message, before YAFC runs.
+  On Windows, `Get-Disk` shows the style: it must read `MBR`. A `GPT` drive has to be
+  repartitioned as MBR, which erases it. Use the kind of drive and format you already use with
+  FMods if that works for you. **Formatting or repartitioning erases the drive.** Back up your
+  files and check the drive's name and size first.
 - **The car parked in an open area, brake held, ignition on and SYNC running.**
 - **The install and uninstall zips.** Keep the uninstall zip available in case you need it.
 

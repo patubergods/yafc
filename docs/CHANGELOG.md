@@ -3,6 +3,23 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## 2026-11-26 (installer mount-line fixes found by the first radio run)
+
+The packaged installer was run on a radio for the first time. It stopped at the overlay check and
+wrote nothing. Two defects were reachable only on a radio:
+
+- `mount_is_ours` compared a whole `mount` line against a constructed string. The radio prints a
+  trailing space where the mode flag would be when there is none, so the comparison never matched
+  and every run aborted at the overlay check. It now compares fields.
+- The read-only shadow inspection ran before the mount stack was reduced, so a boot overlay that
+  was already mounted could not be mounted a second time (`Resource busy`). The inspection now
+  runs after the reduction, when every candidate is unmounted.
+
+The host `mount` mock now reproduces the radio's trailing-space format and refuses a second mount
+of an image already on the slot, so the existing suite covers both defects. `EASY-INSTALL.md` now
+states that the drive's partition table must be MBR: SYNC refuses a GPT drive with "USB not
+supported" before the installer runs. The fixed installer has not been run on a radio.
+
 ## 2026-11-26 (all-or-nothing install, RECOVER, handshake, unproven QNX)
 
 - Install is now all-or-nothing. Exit 8 (missing stock file), 9 (fragment refusal), or 10 (image

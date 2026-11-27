@@ -167,6 +167,27 @@ rc=$(run "$S" "$FDIR")
 [ "$rc" = 0 ] && ok "rerun exits 0" || no "rerun exit $rc"
 [ "$before" = "$(cksum "$S/fordhmi/qml/$T2")" ] && ok "rerun byte-identical" || no "rerun altered file"
 
+# --- case 11: a line another mod already extended still matches -------------
+# The BetterAACP CarPlay mod keeps the status bar and menu bar conditions on one
+# line but adds more conditions after them ("... FarewellViewMode && ..."). The
+# edit must be inserted before that continuation, and a rerun must change
+# nothing.
+S=$WORK/c11/stage; make_stage "$S"
+CR=$(printf '\r')
+sed -i "s/FarewellViewMode${CR}\$/FarewellViewMode \&\& ${CR}/" "$S/fordhmi/qml/$T4"
+grep -Fq "FarewellViewMode && ${CR}" "$S/fordhmi/qml/$T4" \
+    && ok "fixture extended like BetterAACP" || no "could not extend the fixture"
+rc=$(run "$S" "$FDIR")
+[ "$rc" = 0 ] && ok "extended line still applies" || no "extended line exit $rc: $(cat "$WORK/out.txt")"
+grep -Fq "FarewellViewMode && !root.yafcCamFull &&" "$S/fordhmi/qml/$T4" \
+    && ok "edit inserted before the existing continuation" || no "continuation lost or edit misplaced"
+grep -Fq "transientsAllowed) && !root.yafcCamFull" "$S/fordhmi/qml/$T4" \
+    && ok "exact-match fragment still applied" || no "exact-match fragment missing"
+after=$(cksum "$S/fordhmi/qml/$T4")
+rc=$(run "$S" "$FDIR")
+[ "$rc" = 0 ] && [ "$(cksum "$S/fordhmi/qml/$T4")" = "$after" ] \
+    && ok "extended rerun byte-identical" || no "extended rerun changed the file"
+
 # --- case 3: a missing anchor refuses and leaves the file alone ------------
 S=$WORK/c3/stage; F=$WORK/c3/frag; make_stage "$S"; cp -R "$FDIR" "$F"
 sed -i 's/^# anchor: property int aPAPopupWidth: UiTheme.styleRoot.applicationWidth$/# anchor: property int aPAPopupWidth: 0/' "$F/popup-1-state.fragment"

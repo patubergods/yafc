@@ -382,11 +382,14 @@ mount_image() {  # mount_image SOURCE MOUNT-ARGUMENTS...
 }
 
 mount_is_ours() {
-  case "$image_lines" in
-    "$image_mounted on $SCRATCH/mnt type qnx6"|"$image_mounted on $SCRATCH/mnt type qnx6 (ro)"|\
-    "$image_mounted on $SCRATCH/mnt type qnx6 (rw)") return 0 ;;
-  esac
-  return 1
+  # The radio prints a trailing space where the mode flag would be when there is
+  # none, so compare fields, never the whole line (measured on the radio
+  # 2026-11-26: "… type qnx6 " is 61 chars, the constructed string 60).
+  printf '%s\n' "$image_lines" | awk -v img="$image_mounted" -v dir="$SCRATCH/mnt" '
+    { n++ }
+    NF > 6 || $1 != img || $2 != "on" || $3 != dir || $4 != "type" || $5 != "qnx6" { bad = 1 }
+    NF == 6 && $6 != "(ro)" && $6 != "(rw)" { bad = 1 }
+    END { exit !(n == 1 && bad == 0) }'
 }
 
 unmount_image() {
@@ -793,11 +796,7 @@ scratch_owned=1
 mkdir "$SCRATCH/mnt" || abort "cannot create image inspection mountpoint" 10
 
 PHASE=overlay-check
-SHADOWED=
-if ! layer_inventory inspect; then
-  [ -z "$SHADOWED" ] || abort "boot overlay $SHADOWED shadows a YAFC target path; nothing changed" 3
-  abort "cannot prove boot overlays do not shadow YAFC target paths; nothing changed" 3
-fi
+layer_inventory hashes || abort "cannot inventory boot overlays; nothing changed" 3
 LAYERS=$inventory
 for mounted in $(names "$MOUNTS0"); do
   [ "$mounted" != "$BASEDEV" ] || continue
@@ -816,6 +815,18 @@ fi
 PHASE=mount-reduction
 reduce_mounts "$MOUNTS0" || abort "$MOUNT_ERROR; no files written" 5
 unchanged_pair || abort "pair changed when exposing the base; no files written" 3
+
+# Nothing is mounted now, so every boot candidate can be mounted read-only once to
+# prove it does not shadow a YAFC target. Mounting a candidate that is already
+# mounted fails with EBUSY on the radio, so this runs after the reduction, not
+# before it.
+PHASE=overlay-inspect
+SHADOWED=
+if ! layer_inventory inspect; then
+  [ -z "$SHADOWED" ] || abort "boot overlay $SHADOWED shadows a YAFC target path; no files written" 3
+  abort "cannot prove boot overlays do not shadow YAFC target paths; no files written" 3
+fi
+[ "$inventory" = "$LAYERS" ] || abort "boot overlay set changed during inspection; no files written" 3
 MOUNTS_FINAL=$MOUNTS0
 SUMS_FINAL=$SUMS0
 if [ "$MODE" = remove ] || [ "$MODE" = remove-hmi ]; then

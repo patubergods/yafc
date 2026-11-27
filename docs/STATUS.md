@@ -1,12 +1,14 @@
 # Status
 
-Last updated 2026-11-25. Everything here is one of three labels: **verified on one radio**,
+Last updated 2026-11-26. Everything here is one of three labels: **verified on one radio**,
 **host-verified**, **UNPROVEN**. A label is not upgraded by inference.
 
 ## In one line
 
 The design has been used only on a 2020 Explorer ST with private tooling. Host tests cover the
-packaged installer and HMI contracts, but this installer has **not been run on a radio**.
+packaged installer and HMI contracts. The packaged installer has been run on a radio **once**: it
+stopped at the overlay check and wrote nothing, exposing two mount-line defects that are now
+fixed. The fixed installer has **not** been run on a radio.
 
 ## Component state
 
@@ -18,12 +20,12 @@ packaged installer and HMI contracts, but this installer has **not been run on a
 | Per-view rectangles and presets | **Host-verified** as fragments on stock-like fixtures; the private development build's observations do not establish this edition. |
 | `camera.conf` (view, layout and HMI defaults) | Installer seeds it only when absent. **UNPROVEN** on a unit. |
 | Failure counter plus `DISABLE` | **host-verified** as code and as a host test. **UNPROVEN**: it has never been made to fire on a unit. |
-| Installer, six modes | Host tests cover retained bytes, overlay paths, mount replay, journaling, rollback, and failure receipts. Rehearsal never publishes or initializes config. Recovery restores journaled state. Install is all-or-nothing (exit 8/9/10 leave the slot untouched). **UNPROVEN** on a unit. |
+| Installer, six modes | Host tests cover retained bytes, overlay paths, mount replay, journaling, rollback, and failure receipts. Rehearsal never publishes or initializes config. Recovery restores journaled state. Install is all-or-nothing (exit 8/9/10 leave the slot untouched). **Run once on one radio** (2026-11-26): it aborted at the overlay check before any write, because `mount_is_ours` compared a whole `mount` line against a constructed string and the radio's line ends in a trailing space. Fixed; the fixed build is **UNPROVEN** on a unit. |
 | Ownership model (recorded stock digest, own-slot-only) | Host-verified. Only the one recorded stock digest accepted as unowned. **UNPROVEN** on a unit. |
-| Shadowing-overlay refusal | Host-verified as mock mounts. Other overlay images inspected read-only before any write. **UNPROVEN** on a unit. |
+| Shadowing-overlay refusal | Host-verified as mock mounts. The mock now reproduces the radio's trailing-space mount line and refuses a second mount of an image already on the slot. The inspection runs after the mount stack is reduced, because the radio refuses to mount an image that is already mounted. **UNPROVEN** on a unit. |
 | Request-ID receipts | Host-verified. Per-request report directory, timestamp key, `.running` marker consumed only on DONE. **UNPROVEN** on a unit. |
 | Session/ready handshake (popup/native) | Host-verified: the fragment code reads and writes the session, mailbox, and ready files; the native code writes session and ready after a post. **UNPROVEN** on a radio. |
-| Unproven QNX behaviours | DL_DEBUG=libs trace format, dladdr paths, -o before mount order, file-image mount listing, second read-only inspection mount, busy layers after restart: all **UNPROVEN** on a radio. |
+| QNX behaviours | DL_DEBUG=libs trace format, dladdr paths, -o before mount order, file-image mount listing, busy layers after restart: **UNPROVEN** on a radio. A second read-only mount of an image already mounted at `/fs/mp` is **verified on one radio to fail** with `Resource busy`; the installer now inspects only unmounted candidates. The radio's `mount` line ends in a trailing space when there is no mode flag: **verified on one radio**. |
 | Loader probe | **host-verified** as a build; its own output format is documented from the source. **UNPROVEN** on a unit. |
 | HMI fragments and USB image path | Host tests use synthetic stock-like QML, JavaScript stubs and mock image mounts. The public fragments and image recipe are **UNPROVEN** on a radio. |
 | Live view mailbox and compose band | **host-verified** (parser cases in the host suite). **Verified on one radio** in the private development build, not in this edition. |
