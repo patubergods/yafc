@@ -3,6 +3,90 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## 2026-11-27 (radio run, layout hold, on-screen notices, beta.3)
+
+- The packaged installer was run on one 2020 Explorer ST (10-inch portrait): install, uninstall
+  and reinstall all completed, with receipts on the stick. **verified on one radio.** Every other
+  vehicle and firmware stays **UNPROVEN**.
+- The native no longer drops a layout 500 ms after the last renewal from the popup. A published
+  layout now holds until a newer record replaces it, the session changes, `DISABLE` is set, or the
+  popup writes `compose=0`. `LEASE_MS` only gates the ready file.
+- The popup keeps renewing Zoomed View while Ford's report differs, takes its look (divider,
+  sensor panel, Zoom button position, backdrop) from Ford's report without waiting for the
+  mailbox write, and retries the write from its 100 ms poll with a catch-up of the sequence
+  number.
+- Zoomed View root cause fixed: Ford's zoom changes the reported stream, so the popup stopped
+  renewing and the native fell back to the `camera.conf` Hero rectangles.
+- Added `scale_quality` (Screen property 56). Default 2 (nicest) when the key is absent, 0 sends
+  nothing, 1 is fastest. Applied to the camera window and the second view; the camera window gets
+  Ford's default back when composition ends or `DISABLE` is set. Seeded `camera.conf` documents
+  it.
+- The original Hero icon artwork is now in use: the selector points Hero at
+  `parkingfeatures/icon_hero_view`.
+- The installer shows an on-screen notice from both the dispatcher and the worker through the
+  `utserviceutility` popup, best effort and bounded to 5 seconds. Success, failure, removed,
+  rehearsal, recover and disabled variants, plus no-marker, more-than-one-marker, earlier
+  `.running`, non-plain-file marker and missing `yafc-install.sh` refusals from the dispatcher.
+- `START-HERE.txt` now describes the two-minute message and lists the logs in `yafc-install/`.
+- Added the issue templates and `docs/TROUBLESHOOTING.md`.
+- Released `v0.1.0-beta.3` as a GitHub prerelease with the install and uninstall zips and
+  `SHA256SUMS`.
+
+## 2026-11-26 (popup selection ported to the proven event-driven flow)
+
+The public popup now follows the behaviour proven by the private build, on top of the existing
+session mailbox:
+
+- A view pick closes the row, raises the cover and stores a pending key. The layout is published
+  and applied when Ford reports that view (`onYafcFordViewChanged`), not on the next poll tick. A
+  pick whose Ford view already matches (Rear Only to Zoomed View) applies at once.
+- The 2 s timeout reconciles to whatever Ford reports and drops the cover when no layout matches,
+  so the camera cannot stay black. Taps are ignored while the cover is up.
+- The 100 ms poll only renews the native's 500 ms lease; it no longer restarts the cover or the
+  default timer. If Ford changes the stream, the popup re-takes a layout matching the report so
+  the lease stays alive. (Superseded on 2026-11-27: the lease no longer expires a published
+  layout; see the 2026-11-27 entry.)
+- Zoomed View asks for `IPMBRearNormal`, not `IPMBRearZoom`; Ford's zoom level is the state.
+- Hide, DISABLE and a session change write a valid `compose=0` record. The old `;off` sentinel
+  failed the native parser and never released the window.
+- A session that appears after entry publishes the layout already taken from `camera.conf`, and
+  the tick after a session mismatch adopts the restarted native and re-takes the layout.
+- `tools/test-hmi-behavior.js` is updated for the pending/commit, timeout, release,
+  late-session, hide-latch and lease-renewal paths; it has not been run since this change, and
+  the fragments have not been applied to a radio.
+
+## 2026-11-26 (original Hero view icon artwork)
+
+- Added YAFC's own `parkingfeatures/icon_hero_view` artwork: a camera body inside
+  a 360 orbit with two rotation arrowheads, 50x50 RGBA, day and night, five states
+  each. It is drawn deterministically by `tools/make-hero-icon.js`; no Ford icon
+  is copied, sampled or derived.
+- Install and rehearsal now require all ten PNGs, verify each against
+  `yafc-payload/SHA256SUMS`, stage them into the HMI image, read them back with
+  the four QML files, and refuse a boot overlay that shadows any icon path.
+- `tools/make-usb.sh` refreshes the icon tree and writes the icon digests into the
+  payload manifest. Release packaging and tests cover the icon bytes and hashes.
+- The selector fragments still name stock `parkingfeatures/icon_360_view` for
+  Hero. Integration is one fragment edit to `parkingfeatures/icon_hero_view`.
+  **UNPROVEN:** the new icon has not been rendered on a radio.
+
+## 2026-11-26 (installer mount-line fixes found by the first radio run)
+
+The packaged installer was run on a radio for the first time. It stopped at the overlay check and
+wrote nothing. Two defects were reachable only on a radio:
+
+- `mount_is_ours` compared a whole `mount` line against a constructed string. The radio prints a
+  trailing space where the mode flag would be when there is none, so the comparison never matched
+  and every run aborted at the overlay check. It now compares fields.
+- The read-only shadow inspection ran before the mount stack was reduced, so a boot overlay that
+  was already mounted could not be mounted a second time (`Resource busy`). The inspection now
+  runs after the reduction, when every candidate is unmounted.
+
+The host `mount` mock now reproduces the radio's trailing-space format and refuses a second mount
+of an image already on the slot, so the existing suite covers both defects. `EASY-INSTALL.md` now
+states that the drive's partition table must be MBR: SYNC refuses a GPT drive with "USB not
+supported" before the installer runs. The fixed installer has not been run on a radio.
+
 ## 2026-11-26 (all-or-nothing install, RECOVER, handshake, unproven QNX)
 
 - Install is now all-or-nothing. Exit 8 (missing stock file), 9 (fragment refusal), or 10 (image

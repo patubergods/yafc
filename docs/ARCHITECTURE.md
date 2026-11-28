@@ -97,12 +97,7 @@ destination property** - the "destination rectangle" a property dump prints is d
 
 ### The live view mailbox
 
-**verified on one radio:** the view selector writes one line to `/fs/tmpfs/yafc-view` on every
-pick: `compose;cam_src(4),cam_dst(4),bay_src(4),bay_dst(4)\n`, with `compose` set to `0` or
-`1` and each rectangle as `x,y,w,h`. The library reads it before the real post, so a view pick
-does not wait for the configuration poll. A valid record replaces all four rectangles and the
-compose flag. A missing, short, trailing or out-of-range record is ignored; the last good
-geometry stays in force. The file is in RAM and disappears on a soft reset.
+**verified on one radio:** the view selector writes one line to `/fs/tmpfs/yafc-view` on every pick and renews it every 100 ms while shown: `<session><seq>;<compose>;<cam_src>,<cam_dst>,<bay_src>,<bay_dst>\n`, with `compose` set to `0` or `1` and each rectangle as `x,y,w,h`. The library reads it before the real post, so a view pick does not wait for the configuration poll. A valid record replaces all four rectangles and the compose flag. A missing, short, trailing or out-of-range record is ignored; the last good geometry stays in force. The file is in RAM and disappears on a soft reset. A published layout now holds until a newer record replaces it, the session changes, `DISABLE` is set, or the popup writes a `compose=0` record, which restores the factory geometry; the earlier `;off` sentinel did not parse and was removed. The 500 ms drop after the last renewal is gone: it made Zoomed View fall back to the `camera.conf` Hero rectangles when Ford's zoom changed the reported stream and the popup stopped renewing. **verified on one radio** after the fix: Zoomed View stayed correct.
 
 **host-verified:** the parser accepts the valid record, rejects truncated, garbage, negative,
 oversized and zero-width records, and falls back without moving a window off a sane range.
@@ -138,16 +133,25 @@ The library and the HMI popup coordinate over tmpfs files:
    `/fs/tmpfs/yafc-view` with it: `<session><seq>;<compose>;<16 rects>`.
 3. The library accepts a request only when the session matches and echoes it to
    `/fs/tmpfs/yafc-ready` after a successful Screen post with verified geometry.
-4. The popup composes its layout only after two advancing ready replies. A mismatch, missing
-   session, or expired LEASE_MS returns the popup to stock.
+4. The popup takes its layout from `camera.conf` without waiting for a session and
+   renews the record every 100 ms while shown; it keeps renewing Zoomed View while Ford's report
+   differs and retries the write with a catch-up of the sequence number. The ready file is a
+   refinement, not a gate: it confirms the accepted record. A session change or `DISABLE` returns
+   the popup to stock, and a hidden popup writes a `compose=0` record and latches its poll until an
+   explicit show or a tap. A published layout holds until a newer record replaces it, the session
+   changes, `DISABLE` is set, or the popup writes `compose=0`; `LEASE_MS` only gates the ready
+   file.
 
 **Limits:** A ready file proves `screen_post_window` returned success and the compositor
 accepted the geometry properties. It does **not** prove the display painted the result, or that
 a late-created bay ever appeared. QML timers stall with the render thread; a stalled HMI poll
-is not detected by the native. The library's lease expiry is local-only: there is no atomic
-cross-process liveness proof. `DISABLE` prevents new requests but does not kill an active lease.
+is not detected by the native. The ready-file expiry is local-only: there is no atomic
+cross-process liveness proof. `DISABLE` prevents new requests but does not kill a published
+layout until the popup writes `compose=0` or the session changes.
 
-**UNPROVEN:** the full handshake, `LEASE_MS` expiry, and the two-ack gate on a radio.
+**verified on one radio:** after the fix the owner saw Zoomed View correct, so the hold-until-replaced
+behaviour held on the radio. **UNPROVEN:** the ready-file `LEASE_MS` expiry itself, which was not
+observed, and the full handshake on any other firmware.
 
 ## The configuration
 
@@ -167,6 +171,10 @@ and re-read in the slot build before the real post every `reread` posts (`reread
 | `tail_dst` | reserved rectangle; parsed but unused |
 | `bay_id`, `bay_src`, `bay_dst` | the bay: ID string on/off, its source region, its rectangle |
 | `cover_ms` | HMI black-cover dwell in milliseconds; read by the fragments, not the library |
+
+`scale_quality` (Screen property 56) is read with the other keys. Default 2 (nicest) when the key
+is absent, 0 sends nothing, 1 is fastest. It is applied to the camera window and the second view;
+the camera window gets Ford's default back when composition ends or `DISABLE` is set.
 
 Values are validated against a small set and the built-in defaults cover anything missing or out
 of range, so a damaged file falls back safely. The shipped default is

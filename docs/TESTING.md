@@ -7,11 +7,11 @@ repository does not paper over it.
 
 | Command | What it proves |
 |---|---|
-| `sh toolchain/test/run-host-test.sh` | the hook's logic in **both** builds: the LD_PRELOAD interposer and the slot build. Set `SS_RVC_STOCK` to a copy of the camera binary to also check the recorded text hash against a real file (without it that check is skipped and says so). |
+| `sh toolchain/test/run-host-test.sh` | the hook's logic in **both** builds: the LD_PRELOAD interposer and the slot build, including the hold-until-replaced layout tests (P7) and the `scale_quality` tests. Set `SS_RVC_STOCK` to a copy of the camera binary to also check the recorded text hash against a real file (without it that check is skipped and says so). |
 | `sh toolchain/probe/test-emulated.sh` | the probe against an emulated loader: the GOT chain resolves, and the read-only variant refuses to write. |
-| `python3 -I tools/test-install.py` | all five modes, mounted-image refusal, exact stack replay, slot rollback, config seeding, publication and deletion failures, build cleanup, marker dispatch, and the stale-binary packaging guard. Runs fragment JavaScript against fake QML services using Node.js. |
+| `python3 -I tools/test-install.py` | all five modes, mounted-image refusal, exact stack replay, slot rollback, config seeding, publication and deletion failures, build cleanup, marker dispatch, Hero icon digests and image read-back, the stale-binary packaging guard, and the on-screen notice checks from both the dispatcher and the worker against a fake `utserviceutility`. Runs fragment JavaScript against fake QML services using Node.js. |
 | `sh tools/test-apply-hmi-fragments.sh` | the HMI applier: idempotent, and it refuses a source that does not match the anchors. |
-| `sh tools/test-make-release.sh` | the release assembly, with a stub payload so no cross toolchain is needed: only install and uninstall zips, one correct marker each, the stick layout at the zip root, no `.running` or private tokens, warning and evidence wording in `START-HERE.txt`, and `SHA256SUMS` that verify and match across two runs. |
+| `sh tools/test-make-release.sh` | the release assembly, with a stub payload so no cross toolchain is needed: only install and uninstall zips, one correct marker each, the stick layout at the zip root, no `.running` or private tokens, the new `START-HERE.txt` wording (two-minute message, the `yafc-install/` logs, the issue page), all fragments and Hero icons byte for byte, and `SHA256SUMS` that verify and match across two runs. |
 
 Run them in WSL Ubuntu from the repository root. The installer suite needs `dash`, `openssl`,
 `tar`, Node.js and Python 3. If WSL has no `node`, the suite uses Windows `node.exe` on PATH.
@@ -57,9 +57,9 @@ it. Record the result either way.
 |---|---|---|
 | Host suite | the tables above | logic, arithmetic, write order, refusals |
 | Probe on the unit | `slotprobe` in the slot | the loader binds us, and what it binds; the `DL_DEBUG=libs` trace format and `dladdr` paths |
-| Rehearsal | `RUN-YAFC-REHEARSE` | re-writes the current slot bytes and builds and reads back the HMI image without publishing; **UNPROVEN** on a unit |
-| Real install | `RUN-YAFC-INSTALL` | the library and USB HMI image on that unit; the session/ready handshake; the `-o before` mount order, file-image mount listing, and second read-back mount - **UNPROVEN** until run on a unit |
-| Recovery | `RUN-YAFC-RECOVER` | the journaled state is restored from an interrupted request - **UNPROVEN** until run on a unit |
+| Rehearsal | `RUN-YAFC-REHEARSE` | re-writes the current slot bytes and builds and reads back the HMI image without publishing; **UNPROVEN** on a radio |
+| Real install | `RUN-YAFC-INSTALL` | the library and USB HMI image on that unit, the session/ready handshake and the on-screen notice - **verified on one radio** (2026-11-27) on one 2020 Explorer ST; **UNPROVEN** on other firmware, and the `-o before` mount order, file-image mount listing and second read-back mount are still **UNPROVEN** |
+| Recovery | `RUN-YAFC-RECOVER` | the journaled state is restored from an interrupted request - **UNPROVEN** on a radio |
 
 ## Only a unit can show
 
@@ -73,8 +73,8 @@ it. Record the result either way.
 - whether file-image mount listing (`mount` output) matches the mock;
 - whether the second read-only inspection mount works on a loopback-backed image;
 - whether busy layers after a restart block mount replay;
-- whether the session/ready handshake completes with two advancing acknowledgements;
-- whether a stalled QML render thread is detectable by the native's `LEASE_MS` expiry.
+- whether the session/ready handshake and the 100 ms renewal hold on a radio;
+- whether the on-screen notice text appears on radios other than the one 2020 Explorer ST.
 
 ## See also
 

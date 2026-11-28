@@ -25,7 +25,10 @@
 #
 # Matching works on whole lines. A stock line matches when it equals the find or
 # anchor text after the trailing CR and the surrounding spaces and tabs are
-# removed from both. Zero or several matches refuse the fragment.
+# removed from both. For replace, a line that starts with the find and then
+# continues also matches, and the text after the matched part is kept, so an
+# edit that another mod already extended on that line still applies. Zero or
+# several matches refuse the fragment.
 # replace:       the matched line keeps its own leading whitespace. Everything
 #                after it becomes the replace text. If nothing matches and a
 #                line equal to the replace text is already present, the fragment
@@ -126,6 +129,19 @@ function matches(s,   i, c) {
   return c
 }
 
+# Number of lines whose trimmed text starts with s and then continues; first hit
+# in HIT. A firmware (or another mod) that keeps the edit on one line but adds
+# more conditions after it, such as "... FarewellViewMode && <more>", matches
+# this way so the fragment can still be applied.
+function matches_prefix(s,   i, c, t) {
+  c = 0; HIT = 0
+  for (i = 1; i <= N; i++) {
+    t = trim(L[i])
+    if (length(t) > length(s) && index(t, s) == 1) { c++; if (!HIT) HIT = i }
+  }
+  return c
+}
+
 function file_has(s,   i) {
   for (i = 1; i <= N; i++) if (index(L[i], s) > 0) return 1
   return 0
@@ -143,17 +159,27 @@ function seq_present(nb,   i, k, ok) {
 
 # Edit the global text with fragment n. Returns "applied" or "skipped";
 # on refusal returns "" with ERR set.
-function apply1(n,   c, nb, i, k, p, lead) {
+function apply1(n,   c, exact, rest, nb, i, k, p, lead) {
   if (F_edit[n] == "replace") {
-    c = matches(F_find[n])
+    c = matches(F_find[n]); exact = 1
     if (c == 0) {
-      if (F_repl[n] == "" || matches(F_repl[n]) > 0) return "skipped"
-      ERR = F_id[n] ": line to replace not found (different firmware?)"; return ""
+      # The stock text is absent. Either the edit is already applied, or this
+      # firmware words the line differently.
+      if (F_repl[n] == "" || matches(F_repl[n]) > 0 || matches_prefix(F_repl[n]) > 0) return "skipped"
+      c = matches_prefix(F_find[n]); exact = 0
+      if (c == 0) { ERR = F_id[n] ": line to replace not found (different firmware?)"; return "" }
     }
     if (c > 1) { ERR = F_id[n] ": line to replace occurs " c " times, expected 1"; return "" }
     match(L[HIT], /^[ \t]*/)
     lead = substr(L[HIT], 1, RLENGTH)
-    L[HIT] = lead F_repl[n]
+    if (exact) {
+      L[HIT] = lead F_repl[n]
+    } else {
+      # The line continues past the matched text; keep the rest so an edit that
+      # another mod already extended on the same line is not truncated.
+      rest = substr(trim(L[HIT]), length(F_find[n]) + 1)
+      L[HIT] = lead F_repl[n] rest
+    }
     return "applied"
   }
   nb = split(F_body[n], BL, "\n")

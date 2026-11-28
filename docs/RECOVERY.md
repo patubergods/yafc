@@ -82,7 +82,8 @@ Use a soft reset to restore the boot order.
 
 Do not assume that a soft reset, kill switch, USB installer, or shell will be available after a
 loader failure. The preserved library is useful only if it is verified and the unit still has a
-working recovery path. The public installer and recovery process are unproven on a radio.
+working recovery path. Install, uninstall and reinstall ran once on one radio, but
+`RUN-YAFC-RECOVER` and the kill switch have not been exercised on a radio.
 
 ## The one rule
 

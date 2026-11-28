@@ -66,8 +66,9 @@ binaries use, and its four imports must all be `JUMP_SLOT`s.
 sh tools/make-usb.sh <mount-point>
 ```
 
-It copies the built artefacts into the stick layout, writes `yafc-payload/SHA256SUMS`, and refuses
-to touch a directory it does not own or a stick that still has a `RUN-YAFC-*` marker.
+It copies the built artefacts into the stick layout, writes `yafc-payload/SHA256SUMS`
+(library, probe, configuration, fragments and Hero icons), and refuses to touch a
+directory it does not own or a stick that still has a `RUN-YAFC-*` marker.
 
 ## See also
 

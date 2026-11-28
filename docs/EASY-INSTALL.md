@@ -11,11 +11,13 @@ This page is the short version: download a file, put it on a USB drive, plug it 
 need a build, a terminal or a laptop that can talk to the car.
 
 **Read this before you start.** YAFC is an unfinished community project. The design was developed
-and tested on the developer's **2020 Ford Explorer ST** with the 10-inch portrait screen. Other
-SYNC 3 units in the same screen family may work, but compatibility is not guaranteed. This
-packaged installer has **not been run on a radio**; its checks were run on a computer. The rear
-camera is safety-critical: a failure can obscure or interrupt it. Install only while parked and
-at your own risk. Keep the uninstall zip handy.
+and tested on the developer's **2020 Ford Explorer ST** with the 10-inch portrait screen. On that
+one radio the packaged installer was run: install, uninstall and reinstall all completed, and the
+owner saw every front and rear view, the view selector, Zoomed View, the Hero icon and the
+"Please wait" cover behave correctly. That is **verified on one radio**. It is still one vehicle,
+one radio and one firmware: every other vehicle is **UNPROVEN**. The rear camera is
+safety-critical: a failure can obscure or interrupt it. Install only while parked and at your own
+risk. Keep the uninstall zip handy.
 
 ## Before you begin
 
@@ -24,9 +26,12 @@ Check every line. If one is missing, stop.
 - **A Ford SYNC 3 radio with the FMods jailbreak, USB installer and FMods Tools already set up**
   ([fmods.net](https://www.fmods.net/)). YAFC does not install any of them. The FMods USB hook
   starts YAFC when you plug in the drive. No fullscreen CarPlay or Android Auto mod is required.
-- **A USB flash drive.** Use the kind of drive and the format you already use with FMods. Ford's
-  SYNC update guides and some SYNC 3 mod pages recommend exFAT, but YAFC has no format of its own.
-  **Formatting erases the drive.** Back up your files and check the drive's name and size first.
+- **A USB flash drive with an MBR partition table, formatted exFAT or FAT32.** SYNC refuses a
+  drive whose partition table is GPT, with its own "USB not supported" message, before YAFC runs.
+  On Windows, `Get-Disk` shows the style: it must read `MBR`. A `GPT` drive has to be
+  repartitioned as MBR, which erases it. Use the kind of drive and format you already use with
+  FMods if that works for you. **Formatting or repartitioning erases the drive.** Back up your
+  files and check the drive's name and size first.
 - **The car parked in an open area, brake held, ignition on and SYNC running.**
 - **The install and uninstall zips.** Keep the uninstall zip available in case you need it.
 
@@ -51,21 +56,41 @@ Get the install and uninstall zip for the same version from
    `START-HERE.txt` and `RUN-YAFC-INSTALL`. Wait for copying to finish, then safely eject the
    drive before unplugging it.
 2. Park the car, switch the ignition on and wait for SYNC to finish starting.
-3. Plug the drive in and **leave it alone**. The radio does the work. How long this takes is
-   **UNKNOWN** - nobody has measured it, so there is no number to wait for. Do not pull the drive
-   out while it is working.
-4. Confirm `yafc-install/DONE` on the stick. If it says `FAILED`, read the log before trying again.
+3. Plug the drive in and **leave it alone**. The radio does the work. Within about two minutes the
+   radio should show a message: success, failure, or that no marker is armed. Do not pull the
+   drive out before a message appears or two minutes pass.
+4. Then confirm `yafc-install/DONE` or `yafc-install/FAILED` on the stick. If it says `FAILED`,
+   read the log before trying again.
 5. Restart SYNC once: hold **Power + Seek-Right** for about 10 seconds. Check the camera while parked.
 
 ## How to tell whether it worked
 
-Look on the USB drive:
+First, the radio screen. Within about two minutes of plugging the drive in you should see one
+message: a success line, a failure line, or a line saying that no install or uninstall marker is
+armed on this stick. If no message appears at all, the logs on the stick still say what happened.
+
+Then look on the USB drive:
 
 - `yafc-install/DONE` - it finished and its own checks passed.
 - `yafc-install/FAILED` - it stopped. `yafc-install/install.log` says why and what was left in
   place. The slot library is never written without the HMI overlay being published: install
   is all-or-nothing. A failure before the slot write leaves the slot untouched; a failure
   after the slot write rolls back to the journaled previous library bytes.
+
+### Where the logs are
+
+Everything is in the folder `yafc-install/` at the root of the USB drive:
+
+- `DONE` - success receipt lines, one per successful request.
+- `FAILED` - the failure receipt with the reason.
+- `install.log` - the full timestamped log of every run.
+- `request-<ID>/` - one folder per run, with its own `install.log`, `probe.out`, `probe.err`,
+  and `DONE` or `FAILED`.
+- `seen.log` - one line per plug-in, including when nothing was armed or a request was refused.
+
+`stick seen; no marker, nothing done` in `seen.log` means the drive was noticed but no marker was
+armed, so nothing changed. The install marker is used up after a success, so plugging the same
+drive in again does nothing until you arm a marker again: copy a fresh install zip to the drive.
 
 ## If it fails
 
@@ -121,9 +146,21 @@ camera popup draws around it. Do not rely on it while maneuvering.
 **What USB drive and format?** Use the same type of drive and format that already work with
 FMods (see "Before you begin"). YAFC has no format of its own.
 
-**Is it tested?** The design was used on one 2020 Explorer ST. The packaged installer has
-not been run on a radio. See [TESTING.md](TESTING.md) for the host checks and what remains unproven.
+**Is it tested?** The packaged installer was run on one 2020 Explorer ST: install, uninstall and
+reinstall all completed, and the owner saw the views, the view selector, Zoomed View, the Hero icon
+and the "Please wait" cover work. That is **verified on one radio**. Every other vehicle and
+firmware is **UNPROVEN**. See [TESTING.md](TESTING.md) for the host checks and what remains
+unproven.
 
-**Where do the logs go?** The installer writes `yafc-install/install.log` to the USB drive.
-YAFC does not upload logs or collect telemetry. If you ask for help, share the log yourself
-and say which zip you used.
+**Where do the logs go?** Into the folder `yafc-install/` on the USB drive: `DONE`, `FAILED`,
+`install.log`, `request-<ID>/` and `seen.log`. YAFC does not upload logs or collect telemetry. If
+you ask for help, share that folder yourself and say which zip you used.
+
+## Getting help
+
+Open an issue at <https://github.com/patubergods/yafc/issues/new/choose> and attach the whole
+`yafc-install` folder zipped, plus which zip and version you used and the vehicle and radio. Skim
+the logs before attaching: they hold hashes, file names and mount lists, and no known personal
+data, but check that no photo or note of yours shows a VIN or other personal detail. For what is
+still unproven and how to read the receipts, see
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md).

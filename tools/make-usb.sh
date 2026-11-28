@@ -48,7 +48,7 @@ for m in RUN-YAFC-INSTALL RUN-YAFC-REHEARSE RUN-YAFC-REMOVE RUN-YAFC-REMOVE-HMI 
 done
 
 # Refresh, do not skip: the stamp proves this directory is ours, so the stick must
-# match the repository. A skipped copy leaves a stale script or a stale fragment
+# match the repository. A skipped copy leaves a stale script, fragment or icon
 # behind, and a stale fragment makes the applier refuse.
 mkdir -p "$STICK" "$DEST/yafc-payload/hmi" "$DEST/tools"
 cp -f "$REPO/installer/yafc-dispatch.sh" "$STICK/autoinstall.sh"
@@ -61,11 +61,22 @@ cp -f "$REPO/toolchain/bin/libyafc.so" "$DEST/yafc-payload/libyafc.so"
 cp -f "$REPO/toolchain/probe/bin/slotprobe" "$DEST/yafc-payload/slotprobe"
 rm -f "$DEST"/yafc-payload/hmi/*.fragment
 cp -f "$REPO"/payload/hmi/*.fragment "$DEST/yafc-payload/hmi/"
+# The Hero artwork is YAFC's own; its digests go into the same payload manifest.
+for theme in day night; do
+  for state in active activepressed inactive selected selectedpressed; do
+    rel=$theme/50x50/parkingfeatures/icon_hero_view_$state.png
+    [ -f "$REPO/payload/hmi/icons/$rel" ] ||
+      { echo "Missing Hero icon payload/hmi/icons/$rel" >&2; exit 1; }
+  done
+done
+rm -rf "$DEST/yafc-payload/hmi/icons"
+cp -R "$REPO/payload/hmi/icons" "$DEST/yafc-payload/hmi/"
 
 # Say what was written, with hashes, so the copy can be checked afterwards.
 ( cd "$DEST" && sha256sum SyncMyMod/autoinstall.sh yafc-install.sh \
     yafc-payload/libyafc.so yafc-payload/slotprobe yafc-payload/camera.conf \
-    yafc-payload/hmi/*.fragment tools/apply-hmi-fragments.sh > yafc-payload/SHA256SUMS &&
+    yafc-payload/hmi/*.fragment yafc-payload/hmi/icons/*/*/*/*.png \
+    tools/apply-hmi-fragments.sh > yafc-payload/SHA256SUMS &&
     cat yafc-payload/SHA256SUMS )
 echo
 echo "Stick ready and UNARMED. To request something, create ONE marker at the stick"

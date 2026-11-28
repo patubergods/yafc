@@ -6,9 +6,10 @@
 # RUN ON THE UNIT from the marker dispatcher:
 #   sh yafc-install.sh <usb-root> <mode> <running-marker>
 #
-#   install    build and read back the HMI image from the unit's own four files,
-#              journal the exact previous slot, preserved copy, image and ownership
-#              record, write the stock copy and then YAFC's library, probe the pair
+#   install    build and read back the HMI image from the unit's own QML files
+#              plus YAFC's Hero icon artwork, journal the exact previous slot,
+#              preserved copy, image and ownership record, write the stock copy
+#              and then YAFC's library, probe the pair
 #              with the loader trace on, then publish the image by one rename.
 #   rehearse   the same ownership and overlay checks, mount work, image build and
 #              journal; the slot is rewritten with its own current bytes and not
@@ -110,9 +111,38 @@ receipt() {
   ( umask 077; set -C; printf '%s\n' "request=$REQUEST mode=$MODE stage=$PHASE $2" > "$OUT/$1" ) &&
     sync && cat "$OUT/$1" >> "$REPORT/$1" && sync
 }
+# --- on-screen notice --------------------------------------------------------
+# utserviceutility popup is the only display action this installer uses. It is
+# best-effort: a missing or stuck utility must never change the outcome, so the
+# call runs as a bounded child and its status is ignored. The owner should not
+# have to open the USB stick to learn what happened.
+POPUP_TEXT=${YAFC_POPUP_TEXT:-/fs/tmpfs/yafc-popup.txt}
+popup() {  # popup MESSAGE
+  printf '%s\n' "$1" > "$POPUP_TEXT" 2>/dev/null || return 0
+  utserviceutility popup "$POPUP_TEXT" </dev/null >/dev/null 2>&1 &
+  POPUP_PID=$!
+  POPUP_I=0
+  while [ "$POPUP_I" -lt 5 ] && kill -0 "$POPUP_PID" 2>/dev/null; do
+    sleep 1; POPUP_I=$((POPUP_I + 1))
+  done
+  kill "$POPUP_PID" 2>/dev/null || true
+  wait "$POPUP_PID" 2>/dev/null || true
+  return 0
+}
+popup_done() {
+  case "$MODE" in
+    install)    popup "YAFC installed. Restart SYNC (hold Power and Seek-Right) to finish." ;;
+    rehearse)   popup "YAFC rehearsal passed. Nothing was installed." ;;
+    remove|remove-hmi) popup "YAFC removed. Restart SYNC (hold Power and Seek-Right) to finish." ;;
+    recover)    popup "YAFC recovery finished. Restart SYNC to finish." ;;
+    disable)    popup "YAFC disabled. Restart SYNC to finish." ;;
+    *)          popup "YAFC done." ;;
+  esac
+}
 die() {
   say "FAIL: $1" || true
   receipt FAILED "$1" || true
+  popup "YAFC ${MODE:-install} failed. See yafc-install/install.log on the USB stick." || true
   exit "${2:-4}"
 }
 ok() {
@@ -121,6 +151,7 @@ ok() {
   [ "$(cat "$MARKER")" = "$REQUEST" ] && rm "$MARKER" && sync ||
     die "operation verified; cannot consume this request durably"
   receipt DONE "operation verified" || die "operation verified; DONE receipt not confirmed"
+  popup_done || true
   say "done"
   exit 0
 }
@@ -153,9 +184,11 @@ if [ "$MODE" = disable ]; then
   ok
 fi
 
-payload_digest() {
+payload_digest() {  # payload_digest FILE [PATH UNDER yafc-payload]
   plain "$M/SHA256SUMS" || return 1
-  expected=$(awk -v name="yafc-payload/${1##*/}" '
+  prel=${2-}
+  [ -n "$prel" ] || prel=${1##*/}
+  expected=$(awk -v name="yafc-payload/$prel" '
     NF == 2 && $2 == name { count++; print $1 }
     END { if (count != 1) exit 1 }
   ' "$M/SHA256SUMS") && [ "$(sha "$1")" = "$expected" ] || return 1
@@ -346,16 +379,36 @@ base_dirty=0
 MOUNTS0=
 SUMS0=
 
-# --- HMI: build the overlay from the unit's own four files ------------------
-# The stock copies are read while the mount stack is the base device only: an
+# --- HMI: build the overlay from the unit's own QML plus YAFC's icons -------
+# The stock QML copies are read while the mount stack is the base device only: an
 # overlay on top may carry modified copies. The applier edits the staging tree,
-# never the unit's files. The image is built and read back under $IMGDIR, outside
-# the boot overlay*.img glob, and published only by the final rename.
+# never the unit's files. YAFC's Hero artwork is our own file set; IconPushButton
+# appends the state suffix itself. The image is built and read back under $IMGDIR,
+# outside the boot overlay*.img glob, and published only by the final rename.
 FRAGDIR=$M/hmi
-HMI_FILES="fordhmi/qml/themes/ford-10P-MY20/styles/RVCPopupStyle.qml
+ICONDIR=$FRAGDIR/icons
+HMI_QML_FILES="fordhmi/qml/themes/ford-10P-MY20/styles/RVCPopupStyle.qml
 fordhmi/qml/hmirvc/+10inchP/RVCPopup.qml
 fordhmi/qml/hmisettings/driverassistance/+10inchP/RVCSettings.qml
 fordhmi/qml/+10inchP/Root.qml"
+ICON_ROOT=fordhmi/qml/themes/ford-10P-MY20/icons
+ICON_FILES="day/50x50/parkingfeatures/icon_hero_view_active.png
+day/50x50/parkingfeatures/icon_hero_view_activepressed.png
+day/50x50/parkingfeatures/icon_hero_view_inactive.png
+day/50x50/parkingfeatures/icon_hero_view_selected.png
+day/50x50/parkingfeatures/icon_hero_view_selectedpressed.png
+night/50x50/parkingfeatures/icon_hero_view_active.png
+night/50x50/parkingfeatures/icon_hero_view_activepressed.png
+night/50x50/parkingfeatures/icon_hero_view_inactive.png
+night/50x50/parkingfeatures/icon_hero_view_selected.png
+night/50x50/parkingfeatures/icon_hero_view_selectedpressed.png"
+ICON_TARGETS=
+for icon_rel in $ICON_FILES; do
+  ICON_TARGETS="${ICON_TARGETS:+$ICON_TARGETS
+}$ICON_ROOT/$icon_rel"
+done
+HMI_FILES="$HMI_QML_FILES
+$ICON_TARGETS"
 FRAGMENTS="popup-height popup-1-state popup-2-visible popup-3-top
 popup-4-margin popup-5-root popup-6-items popup-7-text-anchor popup-8-text-margin
 settings-1-state settings-2-rows chrome-hide-1-property chrome-hide-2-statusbar
@@ -382,11 +435,14 @@ mount_image() {  # mount_image SOURCE MOUNT-ARGUMENTS...
 }
 
 mount_is_ours() {
-  case "$image_lines" in
-    "$image_mounted on $SCRATCH/mnt type qnx6"|"$image_mounted on $SCRATCH/mnt type qnx6 (ro)"|\
-    "$image_mounted on $SCRATCH/mnt type qnx6 (rw)") return 0 ;;
-  esac
-  return 1
+  # The radio prints a trailing space where the mode flag would be when there is
+  # none, so compare fields, never the whole line (measured on the radio
+  # 2026-11-26: "… type qnx6 " is 61 chars, the constructed string 60).
+  printf '%s\n' "$image_lines" | awk -v img="$image_mounted" -v dir="$SCRATCH/mnt" '
+    { n++ }
+    NF > 6 || $1 != img || $2 != "on" || $3 != dir || $4 != "type" || $5 != "qnx6" { bad = 1 }
+    NF == 6 && $6 != "(ro)" && $6 != "(rw)" { bad = 1 }
+    END { exit !(n == 1 && bad == 0) }'
 }
 
 unmount_image() {
@@ -416,7 +472,8 @@ path_unshadowed() {
 
 # layer_inventory inspect|hashes: sets inventory to "sha path" per other boot
 # overlay. inspect also mounts each one read-only and refuses any that provides
-# or obscures one of the four QML targets, the slot or the preserved copy.
+# or obscures one of the four QML targets, one of the Hero icon targets, the slot
+# or the preserved copy.
 layer_inventory() {
   inventory=
   for other in "$IMGDIR"/overlay*.img; do
@@ -490,7 +547,7 @@ hmi_build() {
   done
   unmount_image || { say "HMI: umount after read-back failed"; return 1; }
   [ "$(sha "$out")" = "$build_sha" ] || { say "HMI: image bytes changed during read-back"; return 1; }
-  say "HMI: read-back matches (SHA-256) for all four files"
+  say "HMI: read-back matches (SHA-256) for every HMI file"
 }
 
 do_hmi() {
@@ -508,7 +565,7 @@ do_hmi() {
   RC=10
   mkdir "$SCRATCH/stage" 2>> "$LOG" ||
     { FAILMSG="cannot create the HMI staging tree"; return 1; }
-  for rel in $HMI_FILES; do
+  for rel in $HMI_QML_FILES; do
     src=$MP/$rel
     plain "$src" || { RC=8; FAILMSG="missing or non-regular stock file $src"; return 1; }
     mkdir -p "$SCRATCH/stage/$(dirname "$rel")" 2>> "$LOG" &&
@@ -520,7 +577,18 @@ do_hmi() {
   RC=9
   sh "$USB/tools/apply-hmi-fragments.sh" "$SCRATCH/stage" "$FRAGDIR" >> "$LOG" 2>&1 ||
     { FAILMSG="the HMI applier refused the fragment set"; return 1; }
-  for rel in $HMI_FILES; do
+  for rel in $ICON_FILES; do
+    src=$ICONDIR/$rel
+    expected=$(payload_digest "$src" "hmi/icons/$rel") ||
+      { FAILMSG="missing or unverified HMI icon $rel"; return 1; }
+    dst=$SCRATCH/stage/$ICON_ROOT/$rel
+    mkdir -p "$SCRATCH/stage/$ICON_ROOT/$(dirname "$rel")" 2>> "$LOG" &&
+      cp "$src" "$dst" 2>> "$LOG" &&
+      [ "$(sha "$dst")" = "$expected" ] ||
+      { FAILMSG="cannot stage HMI icon $rel"; return 1; }
+    say "HMI: staged icon $rel"
+  done
+  for rel in $HMI_QML_FILES; do
     hmi_balanced "$SCRATCH/stage/$rel" ||
       { FAILMSG="unbalanced braces or brackets in $rel"; return 1; }
   done
@@ -793,11 +861,7 @@ scratch_owned=1
 mkdir "$SCRATCH/mnt" || abort "cannot create image inspection mountpoint" 10
 
 PHASE=overlay-check
-SHADOWED=
-if ! layer_inventory inspect; then
-  [ -z "$SHADOWED" ] || abort "boot overlay $SHADOWED shadows a YAFC target path; nothing changed" 3
-  abort "cannot prove boot overlays do not shadow YAFC target paths; nothing changed" 3
-fi
+layer_inventory hashes || abort "cannot inventory boot overlays; nothing changed" 3
 LAYERS=$inventory
 for mounted in $(names "$MOUNTS0"); do
   [ "$mounted" != "$BASEDEV" ] || continue
@@ -816,6 +880,18 @@ fi
 PHASE=mount-reduction
 reduce_mounts "$MOUNTS0" || abort "$MOUNT_ERROR; no files written" 5
 unchanged_pair || abort "pair changed when exposing the base; no files written" 3
+
+# Nothing is mounted now, so every boot candidate can be mounted read-only once to
+# prove it does not shadow a YAFC target. Mounting a candidate that is already
+# mounted fails with EBUSY on the radio, so this runs after the reduction, not
+# before it.
+PHASE=overlay-inspect
+SHADOWED=
+if ! layer_inventory inspect; then
+  [ -z "$SHADOWED" ] || abort "boot overlay $SHADOWED shadows a YAFC target path; no files written" 3
+  abort "cannot prove boot overlays do not shadow YAFC target paths; no files written" 3
+fi
+[ "$inventory" = "$LAYERS" ] || abort "boot overlay set changed during inspection; no files written" 3
 MOUNTS_FINAL=$MOUNTS0
 SUMS_FINAL=$SUMS0
 if [ "$MODE" = remove ] || [ "$MODE" = remove-hmi ]; then
@@ -896,7 +972,8 @@ verify_layers && replay_mounts "$MOUNTS_FINAL" && [ "$(mp_lines)" = "$MOUNTS_FIN
   abort "cannot restore the exact intended mount order" 5
 PHASE=recovery-script-check
 # Same layer list as the baseline. The only possibly changed layer is the YAFC
-# image, built and read back with the four QML files and nothing else.
+# image, built and read back with the four QML files and the ten Hero icons,
+# and nothing else.
 check_scripts "$SUMS_FINAL" || abort "$SCRIPT_ERROR" 6
 PHASE=commit
 if [ "$MODE" != rehearse ]; then

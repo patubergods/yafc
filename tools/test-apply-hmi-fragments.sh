@@ -151,9 +151,9 @@ grep -Fq 'rvcPopupComponentHeight: 480' "$S/fordhmi/qml/$T1" \
 grep -q 'yafcViews' "$S/fordhmi/qml/$T2" && ok "popup state inserted" || no "popup state missing"
 grep -q 'yafcCover' "$S/fordhmi/qml/$T2" && ok "cover inserted" || no "cover missing"
 grep -q 'yafcSelectView' "$S/fordhmi/qml/$T2" && ok "selector inserted" || no "selector missing"
-grep -Fq 'top: yafcShown ? undefined : container.bottom' "$S/fordhmi/qml/$T2" \
+grep -Fq 'top: yafcHideChrome ? undefined : container.bottom' "$S/fordhmi/qml/$T2" \
     && ok "bottom strip anchor guarded" || no "bottom strip anchor not guarded"
-grep -Fq 'topMargin: yafcShown ? UiTheme.styleRoot.generalMarginBig : UiTheme.styleRoot.generalMarginSmaller + UiTheme.styleRoot.generalMarginBig' "$S/fordhmi/qml/$T2" \
+grep -Fq 'topMargin: yafcHideChrome ? UiTheme.styleRoot.generalMarginBig : UiTheme.styleRoot.generalMarginSmaller + UiTheme.styleRoot.generalMarginBig' "$S/fordhmi/qml/$T2" \
     && ok "stock text margin guarded" || no "stock text margin not guarded"
 grep -q 'yafcRearRadio' "$S/fordhmi/qml/$T3" && ok "settings rows inserted" || no "settings rows missing"
 grep -q 'yafcCamFull' "$S/fordhmi/qml/$T4" && ok "root property inserted" || no "root property missing"
@@ -166,6 +166,27 @@ before=$(cksum "$S/fordhmi/qml/$T2")
 rc=$(run "$S" "$FDIR")
 [ "$rc" = 0 ] && ok "rerun exits 0" || no "rerun exit $rc"
 [ "$before" = "$(cksum "$S/fordhmi/qml/$T2")" ] && ok "rerun byte-identical" || no "rerun altered file"
+
+# --- case 11: a line another mod already extended still matches -------------
+# The BetterAACP CarPlay mod keeps the status bar and menu bar conditions on one
+# line but adds more conditions after them ("... FarewellViewMode && ..."). The
+# edit must be inserted before that continuation, and a rerun must change
+# nothing.
+S=$WORK/c11/stage; make_stage "$S"
+CR=$(printf '\r')
+sed -i "s/FarewellViewMode${CR}\$/FarewellViewMode \&\& ${CR}/" "$S/fordhmi/qml/$T4"
+grep -Fq "FarewellViewMode && ${CR}" "$S/fordhmi/qml/$T4" \
+    && ok "fixture extended like BetterAACP" || no "could not extend the fixture"
+rc=$(run "$S" "$FDIR")
+[ "$rc" = 0 ] && ok "extended line still applies" || no "extended line exit $rc: $(cat "$WORK/out.txt")"
+grep -Fq "FarewellViewMode && !root.yafcCamFull &&" "$S/fordhmi/qml/$T4" \
+    && ok "edit inserted before the existing continuation" || no "continuation lost or edit misplaced"
+grep -Fq "transientsAllowed) && !root.yafcCamFull" "$S/fordhmi/qml/$T4" \
+    && ok "exact-match fragment still applied" || no "exact-match fragment missing"
+after=$(cksum "$S/fordhmi/qml/$T4")
+rc=$(run "$S" "$FDIR")
+[ "$rc" = 0 ] && [ "$(cksum "$S/fordhmi/qml/$T4")" = "$after" ] \
+    && ok "extended rerun byte-identical" || no "extended rerun changed the file"
 
 # --- case 3: a missing anchor refuses and leaves the file alone ------------
 S=$WORK/c3/stage; F=$WORK/c3/frag; make_stage "$S"; cp -R "$FDIR" "$F"

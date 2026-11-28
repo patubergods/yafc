@@ -8,7 +8,7 @@ The rear camera is safety-critical. These edits change how large the camera popu
 
 ## Artefacts
 
-The fragments in `payload/hmi/` are the shippable artefacts. The whole Ford files are not. The format and order are in the [fragment README](../payload/hmi/README.md). The installer requires the complete set and runs `tools/apply-hmi-fragments.sh` (POSIX `sh` and `awk`) on copies of the unit's stock files. Host tests use synthetic stock-like fixtures to check application, idempotence and refusal. **UNPROVEN:** the radio's `awk` and `cksum`, the real firmware anchors, and the rendered HMI.
+The fragments in `payload/hmi/` are the shippable artefacts. The whole Ford files are not. The Hero icon set in `payload/hmi/icons/` is YAFC's own artwork, not a fragment and not a Ford file. The format and order are in the [fragment README](../payload/hmi/README.md). The installer requires the complete set and runs `tools/apply-hmi-fragments.sh` (POSIX `sh` and `awk`) on copies of the unit's stock files. Host tests use synthetic stock-like fixtures to check application, idempotence and refusal. **UNPROVEN:** the radio's `awk` and `cksum`, the real firmware anchors, and the rendered HMI.
 
 The applier matches one whole stock line, ignoring surrounding spaces and tabs and a trailing carriage return. It refuses a missing or duplicate anchor, skips an identical result and applies fragments in `id` order. It also refuses to add a duplicate `Component.onCompleted` handler. If any fragment is refused, the USB installer does not publish the staged HMI.
 
@@ -22,13 +22,14 @@ All paths are relative to the HMI QML root of your extracted tree.
 | `hmirvc/+10inchP/RVCPopup.qml` | Adds the YAFC view table, RAM-mailbox publish, cover, selector row, Zoomed View plus/minus, sensor bay and full-screen geometry. |
 | `hmisettings/driverassistance/+10inchP/RVCSettings.qml` | Adds the enable, hide-bars, default rear view and default front view rows. |
 | `+10inchP/Root.qml` | Hides the status bar, menu bar and message tiles while the camera popup asks for it. |
+| `themes/ford-10P-MY20/icons/{day,night}/50x50/parkingfeatures/icon_hero_view_*.png` | Ten original YAFC PNGs (two themes, five states), copied and read back with the image. |
 
 ## Fragments
 
 | Fragment id | Target | Anchor or find text (one stock line) | Edit |
 |---|---|---|---|
 | `popup-height` | style | `rvcPopupComponentHeight: 480` | Appends the separate YAFC height; preserves the stock height. |
-| `popup-1-state` | popup | `property int aPAPopupWidth: UiTheme.styleRoot.applicationWidth` | Adds popup state, guarded stock bindings, default mapping, RAM publication, view selection, cover and zoom synchronization. |
+| `popup-1-state` | popup | `property int aPAPopupWidth: UiTheme.styleRoot.applicationWidth` | Adds popup state, guarded stock bindings, default mapping, mailbox publish and compose=0 release, event-driven selection with timeout reconciliation, cover and zoom synchronization. |
 | `popup-2-visible` | popup | `onVisibleChanged: {` | Calls `yafcVisibleChanged(visible)` first; the stock branches stay. |
 | `popup-3-top` | popup | `topMargin: UiTheme.styleRoot.statusBarHeight` | Sets the container top margin to 0 when the bars are hidden. |
 | `popup-4-margin` | popup | `bottomMargin:  ((apaCsiActive …` (full stock line, two spaces after the colon) | Sets the strip bottom margin to 0 when the bars are hidden. |
@@ -46,17 +47,37 @@ All paths are relative to the HMI QML root of your extracted tree.
 
 Host tests exercise these anchors on synthetic stock-like files. **UNPROVEN:** that the same lines occur once on firmware in a public installation.
 
+## Hero icon
+
+The Hero entry uses `parkingfeatures/icon_hero_view`. `IconPushButton` appends
+`_active`, `_activepressed`, `_inactive`, `_selected` or `_selectedpressed` and
+resolves the id under `themes/ford-10P-MY20/icons/<theme>/50x50/`. The payload
+ships all ten 50x50 RGBA files under `payload/hmi/icons/`: day and night, five
+states each.
+
+The artwork is original to YAFC: a camera body inside a 360 orbit with two
+rotation arrowheads. It is not traced, sampled or assembled from Ford's icons;
+`tools/make-hero-icon.js` draws it deterministically. Install and rehearsal
+require every file, verify its digest against `yafc-payload/SHA256SUMS`, stage
+it, read it back from the built image, and refuse a boot overlay that provides or
+obscures any icon path.
+
+The current fragments still name stock `parkingfeatures/icon_360_view` for Hero.
+Switching the selector to `parkingfeatures/icon_hero_view` is one fragment edit,
+not part of this payload change.
+
 ## Behaviour
 
 - **Configuration.** The installer seeds `/fs/rwdata/yafc/camera.conf` only if it does not exist. Settings changes only the keys it owns; the popup reads preferences and writes transient selections to RAM. Settings refuses to save if it cannot read the existing file and checks the result before logging success. Local QML reads and writes in this edition are **UNPROVEN** on a radio.
-- **RAM mailbox and session.** The popup reads the native's session identity from `/fs/tmpfs/yafc-session` on entry and prefixes every mailbox record to `/fs/tmpfs/yafc-view` with `<session><seq>;<compose>;<16 rects>`. The native echoes the accepted record in `/fs/tmpfs/yafc-ready` after a successful Screen post with verified geometry. The popup composes only after two advancing ready replies; a missing, stale, or mismatched session returns the popup to stock. A ready file proves `screen_post_window` returned success and the compositor accepted the geometry. It does **not** prove that the display painted the result, or that a late-created bay ever appeared. QML timers stall with the render thread; a stalled HMI poll is not detected by the native. The popup's 100 ms poll read of `/fs/tmpfs/yafc-ready` and `/fs/tmpfs/yafc-session` uses synchronous XHR; **UNPROVEN** on a radio.
+- **RAM mailbox and session.** The popup reads the native's session identity from `/fs/tmpfs/yafc-session` on entry and prefixes every mailbox record to `/fs/tmpfs/yafc-view` with `<session><seq>;<compose>;<16 rects>`. The native echoes the accepted record in `/fs/tmpfs/yafc-ready` after a successful Screen post with verified geometry. The layout itself comes from `camera.conf`, so the popup takes it before a session exists; the session only enables live publishing. While shown, the popup renews the record every 100 ms so the native's 500 ms lease stays alive. Hide, DISABLE, and a session change write a `compose=0` record, the only shape that makes the native leave composition; a mismatched session returns the popup to stock and the next tick adopts the restarted native. A ready file proves `screen_post_window` returned success and the compositor accepted the geometry. It does **not** prove that the display painted the result, or that a late-created bay ever appeared. QML timers stall with the render thread; a stalled HMI poll is not detected by the native. The popup's 100 ms poll reads `/fs/tmpfs/yafc-session`, and `/fs/tmpfs/yafc-ready` only when a session is first seen, with synchronous XHR; **UNPROVEN** on a radio.
 - **Compose mode.** A single-camera view (Rear Only, Wide, Zoomed View, Front Only, Front Wide) is composed centered in an 800x480 band at y=400 with small sensors below and black elsewhere. Hero (rear+360 or front+360) and 360 Only keep the two-window layout. **Verified on one radio** for the private build. Front Only, Front Wide and the front 360-only crop were checked by eye in the car only. **UNPROVEN:** the public fragments on a radio.
-- **Cover.** A black rectangle at x0 y0 800x1240 with white centered `Please wait...` text at y 240 shows on every cross-stream switch and on entry to or exit from Zoomed View. The dwell is `cover_ms` from the config (default 700, 0 disables, max 3000), starting when Ford reports the new view, plus 300 ms when leaving Zoomed View. Taps are ignored while it is up. A 2 s timeout reconciles to whatever Ford shows, so the cover cannot stay up. **Verified on one radio** for the private build. **UNPROVEN:** that the public cover never covers a warning on another build.
+- **Selection, first frame and hide.** A pick closes the row, raises the cover, and sets a pending key; the layout is published and applied when Ford reports that view, and the 2 s timeout reconciles if it never does. On entry with a session, the first layout is the configured default when Ford already reports its view; otherwise it takes a view that matches the report. Without a session it uses the default from `camera.conf`. A 300 ms timer then moves to the default unless the user picked first. Hide closes the row, clears the pending key and the cover, and releases the lease. Hide also latches the 100 ms poll — it is not gated on `visible`, which did not track the popup on the development unit — until an explicit show or a tap, so a hidden but still-loaded popup cannot republish. **UNPROVEN:** the public fragments on a radio, and whether a unit signals hide and show symmetrically.
+- **Cover.** A black rectangle at x0 y0 800x1240 with white centered `Please wait...` text at y 240 shows on every cross-stream switch and on entry to or exit from Zoomed View. The dwell is `cover_ms` from the config (default 700, 0 disables, max 3000), starting when Ford reports the new view, plus 300 ms when leaving Zoomed View. A pick is published and applied only when Ford reports the requested view; the poll renews the lease without restarting the dwell. Taps are ignored while it is up. A 2 s timeout reconciles the layout to whatever Ford reports and drops the cover when nothing matches, so it cannot stay up. **Verified on one radio** for the private build. **UNPROVEN:** that the public cover never covers a warning on another build.
 - **Rear selector.** The opener is top-left; the row closes on a tap. The row is Hero, Rear Only, Wide, 360 Only. Zoomed View has no row button: a plus at the top right of the band opens it from Hero (top margin 14) and Rear Only (top margin 414); the minus in the same place returns to Rear Only. **Verified on one radio** for the private build.
-- **Zoomed View.** Uses the plain rear stream (`IPMBRearNormal`) with Ford zoom at `ZoomLevelMax`, laid out exactly like Rear Only. `yafcSyncZoom()` forces Ford's zoom level to match the layout, rechecks on every `rvcZoomLevel` change and after a 1.2 s timer, with at most three tries per layout. Zoom on the Hero stream is the wrong, skewed picture. **Verified on one radio** for the private build.
+- **Zoomed View.** Uses the plain rear stream (`IPMBRearNormal`) with Ford zoom at `ZoomLevelMax`, laid out exactly like Rear Only; Ford's `IPMBRearZoom` stream is never selected. `yafcSyncZoom()` forces Ford's zoom level to match the layout, rechecks on every `rvcZoomLevel` change and after a 1.2 s timer, with at most three tries per layout. Zoom on the Hero stream is the wrong, skewed picture. **Verified on one radio** for the private build.
 - **Front selector.** When the front camera is showing, the row is Hero (`IPMBFront360`), Front Only (`IPMBFrontNormal`, centered band), Front Wide (`IPMBFrontSplit`, centered band) and 360 Only (full-screen surround from `IPMBFront360`). Zoomed View is rear-only. **Verified on one radio** for the private build, by eye for the front crops. **UNPROVEN:** the front crops on another unit.
-- **Per-view table.** `yafcViews` is the single source of truth: Ford view id, config value, source and destination rectangles, compose flag, holes, sensor rectangle, sensor scale, black fill, sensor switch and zoom flag. A black fill tiles everything the holes and sensor panel do not cover, so another app cannot show through. **Host-verified:** the table is balanced and the fragments apply.
-- **Gating.** The popup keeps the stock layout and controls when `DISABLE` is present, composition is off, the native session is absent, or the initial mailbox publication fails verification (no two advancing ready replies). Stock bindings resume when YAFC deactivates. Restart after changing `DISABLE` or `enabled` so the library and HMI start in the same state. The public fallback is **UNPROVEN** on a radio.
+- **Per-view table.** `yafcViews` is the single source of truth: Ford view id, config value, source and destination rectangles, compose flag, holes, sensor rectangle, sensor scale, black fill, sensor switch and zoom flag. A black fill tiles everything the holes and sensor panel do not cover, so another app cannot show through. Host tests cover the table balance and fragment application; **not re-run for this change**.
+- **Gating.** The popup keeps the stock layout and controls when `DISABLE` is present, composition is off, or no Ford report matches a known layout. A failed publish leaves the previous layout up and keeps the pick pending for the 2 s retry. Stock bindings resume when YAFC deactivates. Restart after changing `DISABLE` or `enabled` so the library and HMI start in the same state. The public fallback is **UNPROVEN** on a radio.
 - **Sensor bay.** The bay is an opaque black panel with a second instance of the stock sensor component. It draws below the stock items, shows only while a combined view shows, and only for views whose switch is on. **Verified on one radio** for the private build. **UNPROVEN:** that the coordinates fit another display.
 - **Chrome.** The root edits hide bars only while the popup reports `yafcHideChrome` as true. That comes from `hide_chrome=1` in the config. **Verified on one radio** for the private build. **UNPROVEN:** that no required information disappears with the bars.
 - **Settings rows.** The page adds enable, hide-bars, default rear view and default front view. Each offered view maps to a popup layout. `cover_ms` is config-only. The page remains **UNPROVEN** on a radio.
@@ -78,7 +99,6 @@ A QML syntax error or a missing type usually leaves the HMI without the edited v
 
 These features of the private development HMI have no fragment, so this edition cannot install them:
 
-- The generated composite Hero icon. The selector uses stock `parkingfeatures/icon_360_view` for Hero instead; no PNG is shipped.
 - A user-selectable background colour.
 - Settings pages for camera controls direction, parking sensors, active park assist, vehicle appearance and background colour.
 - The private boot hook and any native binary. This edition is source-only.

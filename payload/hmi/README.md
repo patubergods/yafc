@@ -1,6 +1,6 @@
 # HMI fragments
 
-These files hold the HMI edits that YAFC applies to your own copy of four Ford QML files. They contain our code and short anchor strings only. They contain no Ford file. The full description is in [../../docs/HMI-PATCH.md](../../docs/HMI-PATCH.md).
+These files hold the HMI edits that YAFC applies to your own copy of four Ford QML files. They contain our code and short anchor strings only. They contain no Ford file. The directory also holds YAFC's own Hero icon artwork under `icons/`, described below. The full description is in [../../docs/HMI-PATCH.md](../../docs/HMI-PATCH.md).
 
 `tools/apply-hmi-fragments.sh` (POSIX sh and awk) reads the `*.fragment` files. The installer requires the complete set and applies it only to copies of the unit's stock HMI. The applier refuses a missing or duplicate anchor and leaves that target unedited. Host tests use synthetic stock-like files; the public fragments have not been applied to an actual radio.
 
@@ -48,9 +48,28 @@ The file name must be `<id>.fragment`, and `append-after` needs a nonblank body.
 | `chrome-hide-4-transient` | `+10inchP/Root.qml` | stop transients from restoring a bar |
 | `chrome-hide-5-tiles` | `+10inchP/Root.qml` | hide message tiles |
 
-The popup uses `file:///fs/rwdata/yafc/camera.conf`, `file:///fs/rwdata/yafc/DISABLE`, and the RAM mailbox `file:///fs/tmpfs/yafc-view`. Restart after changing the kill switch so the native library and the HMI both start in stock mode.
+The popup uses `file:///fs/rwdata/yafc/camera.conf`, `file:///fs/rwdata/yafc/DISABLE`, the session file `file:///fs/tmpfs/yafc-session`, and the RAM mailbox `file:///fs/tmpfs/yafc-view`. While shown it renews the mailbox record every 100 ms, and it keeps renewing Zoomed View while Ford's report differs. The native holds a published layout until a newer record replaces it, the session changes, `DISABLE` is set, or the popup writes a `compose=0` record; on hide it writes that record. Restart after changing the kill switch so the native library and the HMI both start in stock mode.
 
-No icon files are shipped. The selector uses stock Ford icon ids; Hero uses `parkingfeatures/icon_360_view`. The owner's private build used a generated composite Hero icon, which is not included.
+## Hero view icon
+
+The Hero selector artwork is YAFC's own, not a Ford file and not a derivative of
+one: a camera body inside a 360 orbit, 50x50 RGBA, day and night, five states
+each. The files live under `icons/<theme>/50x50/parkingfeatures/` in this
+directory.
+
+| iconId | Files |
+|---|---|
+| `parkingfeatures/icon_hero_view` | `icon_hero_view_active.png`, `_activepressed`, `_inactive`, `_selected`, `_selectedpressed` |
+
+`IconPushButton` appends the state suffix itself and resolves the id under
+`themes/ford-10P-MY20/icons/<theme>/50x50/` on the unit. The installer requires
+all ten files, verifies each against `yafc-payload/SHA256SUMS`, stages them into
+the HMI image and reads them back. Another overlay that provides or obscures one
+of these paths is refused.
+
+The selector fragments now name `parkingfeatures/icon_hero_view` for Hero, so the
+artwork is in use. On the one 2020 Explorer ST the owner saw the Hero icon after the
+2026-11-27 install; other firmware is UNPROVEN.
 
 ## Rules for new fragments
 

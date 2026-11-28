@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/patubergods/yafc/blob/main/docs/TROUBLESHOOTING.md
+    about: What the on-screen messages mean, where the logs are on the USB stick, and what to try.
+  - name: Report a security problem privately
+    url: https://github.com/patubergods/yafc/security/advisories/new
+    about: For a vulnerability only. Do not use it for ordinary bugs.

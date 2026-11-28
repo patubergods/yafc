@@ -26,28 +26,29 @@ every other process, and every Ford file alone. See [ARCHITECTURE.md](ARCHITECTU
 
 ## Not done
 
-- **No radio run of the packaged installer.** Vehicle observations come from a development
-  build on one 2020 Explorer ST.
+- **No radio run on any unit but the one 2020 Explorer ST.** Install, uninstall and reinstall ran
+  there once each on 2026-11-27; every other vehicle and firmware is unproven.
 - The loader probe has not been run on a unit from this repository.
-- The install and USB HMI image path have not been exercised on a unit from this repository.
-- Recovery from an interrupted request (`RUN-YAFC-RECOVER`) has not been exercised.
-- The 360 and Zoomed View layouts in the public build have not been checked on a radio.
+- `RUN-YAFC-RECOVER` and the DISABLE kill switch live have not been exercised on a radio.
+- Rehearsal has not been run on a radio.
+- The 360 and Zoomed View layouts in the public build were seen working on the one radio; other
+  firmware is unproven.
 - The strike counter has never been made to fire on purpose.
 - The HMI values for the ship-config shape are supplied but unexercised.
 - Whether a warm start re-reads the configuration is unknown.
 - All QNX-specific behaviours (`DL_DEBUG=libs` trace, `dladdr` paths, `-o before` mount order,
   file-image mount listing, second read-only inspection mount, busy layers after restart) are
   **UNPROVEN** on a radio.
-- The session/ready handshake (two-ack gate, `LEASE_MS` expiry, stalled-thread detection) is
-  **UNPROVEN** on a radio.
+- The session/ready handshake on any firmware but the one observed, and the ready-file `LEASE_MS`
+  expiry and stalled-thread detection, are **UNPROVEN** on a radio.
 
 ## Next, in order
 
-1. Rehearse on the unit (`RUN-YAFC-REHEARSE`) and read `install.log`.
-2. Run the probe on the unit to confirm the `DL_DEBUG=libs` trace format and `dladdr` paths.
+1. Rehearse on another unit (`RUN-YAFC-REHEARSE`) and read `install.log`.
+2. Run the probe on a unit to confirm the `DL_DEBUG=libs` trace format and `dladdr` paths.
 3. Run the counter drill ([TESTING.md](TESTING.md)) and record the result.
-4. Install for real (`RUN-YAFC-INSTALL`), reboot, and observe the camera on a stationary vehicle.
-5. Interrupt an install and recover with `RUN-YAFC-RECOVER`.
+4. Exercise `RUN-YAFC-RECOVER` and the DISABLE kill switch live on a radio.
+5. Repeat the install on other firmware and record whether the on-screen notice text appears.
 6. Calibrate the picture against the observed HMI values, one variable at a time.
 7. Record every result in [STATUS.md](STATUS.md) and update the labels.
 

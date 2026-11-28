@@ -73,6 +73,7 @@ static int g_nocv;           /* 1: libscreen lacks screen_get_window_property_cv
 static void *g_self_post;    /* non-NULL: dlsym hands back this for screen_post_window */
 static int g_slow_dlsym_us, g_slow_cv_us;
 static int g_join_rc, g_group_rc, g_share_rc, g_set_rc, g_post_rc, g_create_rc;
+static int g_fail_cam_prop;
 
 #define MAXCALL 4096
 static struct call { char fn[24]; void *win; int prop; int a, b; char str[32]; } calls[MAXCALL];
@@ -94,7 +95,8 @@ static int count(const char *fn, void *win)
 {
     int i, n = 0;
     for (i = 0; i < ncalls; i++)
-        if (!strcmp(calls[i].fn, fn) && (!win || calls[i].win == win)) n++;
+        if (!strcmp(calls[i].fn, fn) && (!win || calls[i].win == win) &&
+            !(calls[i].prop == 56 && !strcmp(fn, "set"))) n++;   /* 56 = scale quality, not geometry */
     return n;
 }
 static struct call *last(const char *fn, void *win, int prop)
@@ -216,9 +218,10 @@ static int f_set_iv_(void *w, int p, const int *v)
 {
     int pair = p == SP_POSITION || p == SP_SIZE ||
                p == SP_SOURCE_POSITION || p == SP_SOURCE_SIZE;
-    if (!g_set_rc) wval_put(w, p, v[0], pair ? v[1] : 0);
+    int rc = g_set_rc || (w == CAM && p == g_fail_cam_prop);
+    if (!rc) wval_put(w, p, v[0], pair ? v[1] : 0);
     rec("set", w, p, v[0], pair ? v[1] : 0, 0);
-    return g_set_rc;
+    return rc;
 }
 static int f_get_win_iv_(void *w, int p, int *o)
 {
@@ -336,7 +339,7 @@ static void reset_view_rects(void)
     static const int bs[4] = {448, 0, 272, 480};
     memcpy(g_cam_src, cs, sizeof cs); memcpy(g_cam_dst, cd, sizeof cd);
     memcpy(g_bay_src, bs, sizeof bs); g_bay_dst[0] = g_bay_dst[1] = g_bay_dst[2] = g_bay_dst[3] = 0;
-    g_live_view = 0; g_view_compose = 1; g_geo_dirty = 1;
+    g_live_view = 0; g_view_compose = 1; g_geo_dirty = 1; g_mode = 2;
     begin_session();
 }
 #endif
@@ -374,6 +377,7 @@ static void reset_core(int keep_files)
     g_geo_check_tick = 0; g_bay_retries = 0; nwvals = 0;
     g_bay_win = 0; g_bay_tried = 0; g_group_made = 0; g_ctx = 0;
     g_join_rc = g_group_rc = g_share_rc = g_set_rc = g_post_rc = g_create_rc = 0;
+    g_fail_cam_prop = 0;
     g_dlopen_ok = 1;
     g_dlsym_ok = 1;
     g_nocv = 0; g_self_post = 0; g_slow_dlsym_us = g_slow_cv_us = 0;
@@ -387,6 +391,7 @@ static void reset_core(int keep_files)
 #ifdef YAFC_SLOT
     g_is_cam = 0; g_ident_busy = 0; g_ident_done = 0; g_ident_tries = 0; g_cam_win = 0;
     g_inflight = 0; g_slot_dead = 0; g_boot_len = 0; g_live_view = 0;
+    g_disable_check_ms = 0; g_disabled = 0;
     g_session[0] = 0; g_session_len = g_request_len = g_serial = g_acked = 0;
     g_request_ms = 0; ui_seq = 0; ui_conf = 0; ui_suppress = 0;
     get_win_cv = 0;
@@ -1058,41 +1063,41 @@ int main(void)
      * prepends g_session + seq + ";". */
     reset_state(); reset_view_rects();
     mb_write("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 valid compose record applies all four rectangles",
           g_live_view && g_view_compose && g_cam_src[1] == 6 && g_cam_dst[1] == 400 &&
           g_bay_src[0] == 447 && g_bay_dst[2] == 0);
     reset_state(); reset_view_rects();
     mb_write("0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 compose=0 clears compose and keeps prior rectangles",
           g_live_view && !g_view_compose && g_cam_dst[1] == 71 && g_cam_dst[2] == 800);
     reset_state(); reset_view_rects();
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 missing mailbox falls back", !g_live_view && g_cam_dst[1] == 71);
     reset_state(); reset_view_rects();
     mb_write("1;0,6,720");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 truncated record falls back", !g_live_view && g_cam_dst[1] == 71);
     reset_state(); reset_view_rects();
     mb_write("x;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 garbage mode falls back", !g_live_view && g_cam_dst[1] == 71);
     reset_state(); reset_view_rects();
     mb_write("1;-1,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 negative number falls back", !g_live_view && g_cam_src[0] == 0);
     reset_state(); reset_view_rects();
     mb_write("1;0,0,721,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 oversized source rectangle falls back", !g_live_view && g_cam_src[2] == 438);
     reset_state(); reset_view_rects();
     mb_write("1;0,0,0,480,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 zero non-bay dimension falls back", !g_live_view && g_cam_src[2] == 438);
     reset_state(); reset_view_rects();
     mb_write("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\nold\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("S9 trailing bytes fall back", !g_live_view && g_cam_dst[1] == 71);
 
     /* A mailbox update must affect the actual post path with config polling off. */
@@ -1199,7 +1204,8 @@ int main(void)
             write_file("yafc-view", stale);
         }
         posts(1);
-        check("P2 stale session ignored", !g_live_view && !g_geo_ours && !exists("yafc-ready"));
+        check("P2 stale session ignored, config still composes",
+              !g_live_view && g_geo_ours && !exists("yafc-ready"));
         /* Native's own session B still works. */
         request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
         posts(1);
@@ -1213,40 +1219,60 @@ int main(void)
     reset_state();
     write_conf(CONF_COMPOSE);
     write_file("yafc-view", "BOGUS1;1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("P3 no session: mailbox ignored", !g_live_view);
     /* With a fake session that does not match the mailbox prefix: also ignored. */
     reset_state(); reset_view_rects();
     /* write a mailbox with a deliberately wrong session prefix */
     write_file("yafc-view", "9999.9999.9999;1;1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
-    read_live_view();
+    update_view(now_ms(), 0);
     check("P3 wrong session prefix: mailbox ignored", !g_live_view);
 
-    /* ---- P4. DISABLE: new requests blocked mid-session ----
-     * A DISABLE file written mid-flight prevents the native from accepting a
-     * NEW sequence. The current acknowledged request stays composited until its
-     * lease expires or the HMI stops publishing. */
+    /* ---- P4. DISABLE overrides both authority sources, even with no HMI. ---- */
     {
         reset_state(); reset_view_rects();
-        write_conf(CONF_COMPOSE);
+        write_conf(CONF_COMPOSE "reread=0\n");
         start_camera();
         posts(2);
         ui_suppress = 1;
         /* First request: accepted and acknowledged. */
-        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+        request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,220,300\n");
         posts(1);
         check("P4 pre-DISABLE request acknowledged", g_live_view && g_acked == g_serial);
         /* Write DISABLE file. */
         write_file("DISABLE", "x");
-        /* Current request (same seq, within lease) still valid. */
+        /* Same sequence, still within lease; detect DISABLE without a renewal. */
         posts(1);
-        check("P4 same request within lease survives DISABLE", g_live_view);
+        check("P4 DISABLE restores stock, hides bay and removes ready",
+              !g_live_view && !g_geo_ours && !g_bay_shown && !exists("yafc-ready") &&
+              last("set", CAM, SP_POSITION) && last("set", CAM, SP_POSITION)->b == 71 &&
+              last("set", CAM, SP_SIZE) && last("set", CAM, SP_SIZE)->b == 480);
         /* New sequence: blocked. */
+        ncalls = 0;
         request_payload("1;0,0,438,480,0,71,800,527,448,0,272,480,0,0,0,0\n");
         posts(1);
-        check("P4 new sequence after DISABLE rejected", !g_live_view && !g_geo_ours);
+        check("P4 DISABLE blocks new sequence and configured fallback",
+              !g_live_view && !g_geo_ours && !exists("yafc-ready") && count("set", 0) == 0);
         unlink("DISABLE");
     }
+    reset_state();
+    write_conf(CONF_COMPOSE "reread=0\n");
+    ui_suppress = 1;
+    start_camera();
+    posts(1);
+    check("P4 configured first post composes before any mailbox",
+          !g_live_view && g_geo_ours && g_bay_shown && !exists("yafc-ready"));
+    write_file("DISABLE", "x");
+    posts(1);
+    check("P4 DISABLE without publisher or config polling restores stock",
+          !g_geo_ours && !g_bay_shown && !exists("slot-inflight"));
+    reset_state();
+    write_conf(CONF_COMPOSE);
+    start_camera();
+    write_file("DISABLE", "x");
+    posts(1);
+    check("P4 DISABLE before identification prevents first-post fallback",
+          !g_geo_ours && count("set", 0) == 0 && count("post", CAM) == 1);
 
     /* ---- P5. Partial write: truncated or mismatched mailbox ---- */
     {
@@ -1289,8 +1315,8 @@ int main(void)
 
     /* ---- P6. Restart: native restarts, new session, old HMI stops ----
      * The HMI polls the session file. When it changes, yafcStop() clears the
-     * HMI session and the ready file disappears. The native sees no valid
-     * request and leaves composition. */
+     * HMI session and the ready file disappears. The native rejects the stale
+     * mailbox prefix; composition now comes from camera.conf, so it continues. */
     {
         char old_session[36];
         reset_state(); reset_view_rects();
@@ -1308,33 +1334,95 @@ int main(void)
         write_file("yafc-session", "9999.9999.9999;");  /* new native session */
         /* Old mailbox still has old session prefix → ignored. */
         posts(3);
-        check("P6 old session rejected after restart", !g_live_view && !g_geo_ours);
+        check("P6 old session rejected after restart, config still composes", !g_live_view && g_geo_ours);
         /* New HMI would read the new session and publish with it. */
     }
 
-    /* ---- P7. Timeout / lease expiry ----
-     * The native's LEASE_MS (500ms) gate: a same-sequence request past the
-     * lease window is rejected. A new sequence resets the clock. */
+    /* ---- P7. A record holds until replaced ----
+     * The popup's heartbeat can stall (Ford's zoom starved it on the radio and
+     * the camera fell back to the configured Hero rectangles). A valid record
+     * therefore keeps its geometry past LEASE_MS; only the ready file lapses.
+     * A new sequence is accepted at any time. */
     {
-        int seqP7;
+        int i;
+        const char *bad[] = { 0, "", "broken\n", "0;1;bad\n" };
         reset_state(); reset_view_rects();
         write_conf(CONF_COMPOSE "reread=0\n");
         start_camera();
         posts(2);
         ui_suppress = 1;
         /* First request at g_now = some time. */
-        seqP7 = ui_seq + 1;
         request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
         posts(1);
         check("P7 request accepted within lease", g_live_view);
-        /* Advance clock past the lease window. */
-        g_now += 600;  /* 600 s past 500ms lease; clock granularity is seconds in the harness */
+        /* Past the lease: geometry and bay stay as requested, ready lapses. */
+        g_now += LEASE_MS / 1000 - 1;
         posts(1);
-        check("P7 same request past lease rejected", !g_live_view && !g_geo_ours);
+        check("P7 expired record keeps its geometry and hidden bay",
+              g_live_view && g_geo_ours && !g_bay_shown && !exists("yafc-ready") &&
+              rect_eq(g_cam_src, (int[]){0,6,720,474}) && rect_eq(g_cam_dst, (int[]){0,400,800,480}) &&
+              !g_bay_dst[2] && !g_bay_dst[3]);
         /* New sequence: accepted (resets the clock). */
         request_payload("1;0,0,438,480,0,71,800,527,448,0,272,480,0,0,0,0\n");
         posts(1);
-        check("P7 new sequence after expiry accepted", g_live_view);
+        check("P7 new sequence after expiry accepted", g_live_view && exists("yafc-ready"));
+        for (i = 0; i < 4; ++i) {
+            request_payload("1;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+            posts(1);
+            if (!bad[i]) unlink("yafc-view");
+            else if (i == 3) mb_write("0;0,6,720,474,0,400,800,480,447,0,273,480,0,0,0,0\n");
+            else write_file("yafc-view", bad[i]);
+            posts(1);
+            check("P7 missing, empty, partial or older record keeps the current layout", g_live_view);
+            posts(2);
+            check("P7 invalid mailbox neither changes geometry nor acknowledges",
+                  g_live_view && !exists("yafc-ready") && g_cam_dst[1] == 400 && !g_bay_shown);
+        }
+    }
+
+    /* Stock restoration must compare against what Screen accepted, not the
+     * configured fallback that failed to replace one of those properties. */
+    reset_state();
+    write_conf(CONF_COMPOSE);
+    ui_suppress = 1;
+    start_camera();
+    posts(1);
+    request_payload("1;0,6,720,474,0,400,800,481,447,0,273,480,0,0,0,0\n");
+    posts(1);
+    posts(LEASE_MS / 1000);
+    check("P7 long after the lease the layout still holds", g_live_view && g_geo_ours && g_cam_dst[3] == 481);
+    g_fail_cam_prop = 0;
+    wval_put(CAM, SP_SIZE, 711, 477); /* Ford reclaimed only SIZE. */
+    write_file("DISABLE", "x");
+    posts(1);
+    {
+        int p[2], s[2], sp[2], ss[2];
+        check("P7 DISABLE restores mixed successful writes, preserves Ford-owned SIZE",
+              !g_geo_ours && !f_get_win_iv_(CAM, SP_POSITION, p) && p[0] == 0 && p[1] == 71 &&
+              !f_get_win_iv_(CAM, SP_SIZE, s) && s[0] == 711 && s[1] == 477 &&
+              !f_get_win_iv_(CAM, SP_SOURCE_POSITION, sp) && sp[0] == 0 && sp[1] == 0 &&
+              !f_get_win_iv_(CAM, SP_SOURCE_SIZE, ss) && ss[0] == 720 && ss[1] == 480);
+    }
+
+    /* ---- scale_quality: nicest by default, 0 leaves Ford's setting alone ---- */
+    {
+        int q[2] = {-9, -9};
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE "reread=0\n");
+        start_camera();
+        posts(3);
+        check("scale_quality defaults to 2 on the camera window",
+              !f_get_win_iv_(CAM, 56, q) && q[0] == 2);
+        write_file("DISABLE", "x");
+        posts(2);
+        q[0] = -9;
+        check("DISABLE hands the camera window back Ford's scaling",
+              !f_get_win_iv_(CAM, 56, q) && q[0] == 0);
+        reset_state(); reset_view_rects();
+        write_conf(CONF_COMPOSE "reread=0\nscale_quality=0\n");
+        start_camera();
+        posts(3);
+        check("scale_quality=0 sends nothing to the window", f_get_win_iv_(CAM, 56, q) != 0);
     }
 
     /* ---- P8. Bay-not-painted limit (documented in yafc-slot.c) ----
