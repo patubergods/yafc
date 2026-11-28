@@ -3,8 +3,9 @@
 A fullscreen camera presentation for Ford SYNC 3 (QNX, ARMv7) that runs **inside the factory
 camera process** instead of replacing it. On the developer's 2020 Explorer ST, fullscreen rear
 video appeared early, before SYNC finished starting. The 360 view, parking sensors and
-view-selection buttons appeared later as the interface loaded. The packaged installer has not
-been run on a radio, and behavior on other vehicles is unproven.
+view-selection buttons appeared later as the interface loaded. On that vehicle the packaged
+installer has been run on one radio (install, uninstall and reinstall); behavior on other
+vehicles is unproven.
 
 > **WARNING: use at your own risk.** YAFC is an unofficial, free hobby project with **no warranty,
 > no support and no liability**. It modifies your vehicle's SYNC 3 unit and its camera system, and
@@ -39,13 +40,28 @@ unit: nothing Ford ships is redistributed here. See
 3. On the stick, create **one** marker: `RUN-YAFC-REHEARSE` first. It rewrites the current slot
    bytes and checks an HMI image without publishing it or changing settings.
 4. Insert the stick. The jailbreak's USB hook runs `SyncMyMod/autoinstall.sh`, which renames the
-   marker and runs the installer. Read `yafc-install/install.log`, `DONE` or `FAILED`.
+   marker and runs the installer. Within about two minutes the radio shows a message: success,
+   failure, or "no marker armed". The logs are on the stick in `yafc-install/` (`DONE`, `FAILED`,
+   `install.log`, `seen.log`).
 5. When rehearsal passes, `RUN-YAFC-INSTALL` writes and probes the library, then builds and
    publishes the HMI overlay from the unit's own stock files. If the probe fails, it puts the
    original library back. Check the receipt, reboot, and inspect the camera while parked.
 
 Full details, including the exact write order and what each receipt means:
 [INSTALL.md](docs/INSTALL.md).
+
+## Getting help
+
+Expect a success, failure or "no marker armed" message on the radio screen within about two
+minutes of plugging the stick in. If the install fails, **do not plug the stick in again**; read
+`yafc-install/install.log` on the stick. Every log is in the `yafc-install/` folder at the stick
+root; [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) says what each file holds.
+
+To report a problem, open a
+[bug report](https://github.com/patubergods/yafc/issues/new/choose) and attach the whole
+`yafc-install` folder, zipped. Do not post your VIN or other personal data. A security problem
+can be reported privately through the repository's Security tab (see [SECURITY.md](SECURITY.md)).
+No email address is published.
 
 ## Undo
 
@@ -71,6 +87,7 @@ Full details, including the exact write order and what each receipt means:
 | [docs/RECOVERY.md](docs/RECOVERY.md) | Kill switch, removal, soft reset |
 | [docs/HMI-PATCH.md](docs/HMI-PATCH.md) | The on-screen edits, as fragments applied to your own files |
 | [docs/TESTING.md](docs/TESTING.md) | The host suite, the loader probe, and what only a unit can show |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | The on-screen messages, where the logs are on the USB stick, and how to report a problem |
 | [docs/BUILD.md](docs/BUILD.md) | Cross-building and running the tests |
 | [docs/SAFETY.md](docs/SAFETY.md) | The safety position, plainly |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What is next |

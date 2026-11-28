@@ -79,12 +79,16 @@ def good(msg):
 VARIANTS = {"install": "INSTALL", "uninstall": "REMOVE"}
 FORBIDDEN = re.compile(r"\bpat\b|PAT_|pat-rvc|patcam")
 HOSTPATH = re.compile(r"/home/|/Users/|/mnt/c/|[A-Za-z]:[\\/](?:Users|home|Windows)")
-TEXT_MAX = 25
+TEXT_MAX = 40
 DOCS = "https://github.com/patubergods/yafc/blob/main/docs/"
 fragments = {"yafc-payload/hmi/" + p.name: p.read_bytes()
              for p in Path(sys.argv[2]).glob("*.fragment")}
+icons = {"yafc-payload/hmi/icons/" + p.relative_to(Path(sys.argv[2]) / "icons").as_posix(): p.read_bytes()
+         for p in (Path(sys.argv[2]) / "icons").rglob("*.png")}
 if not fragments:
     bad("no source fragments found")
+if not icons:
+    bad("no source Hero icons found")
 probe = "yafc-payload/slotprobe"
 library = "yafc-payload/libyafc.so"
 stub_payload = {name: (Path(sys.argv[3]) / Path(name).name).read_bytes()
@@ -146,11 +150,17 @@ for variant, entries in names.items():
         bad("%s zip missing %s" % (variant, missing))
     else:
         good("%s zip has the stick layout" % variant)
-    archived_fragments = {n: files[n] for n in entries if n.startswith("yafc-payload/hmi/")}
+    archived_fragments = {n: files[n] for n in entries
+                          if n.startswith("yafc-payload/hmi/") and n.endswith(".fragment")}
     if archived_fragments != fragments:
         bad("%s zip fragment names or bytes differ from the source" % variant)
     else:
         good("%s zip includes every source fragment byte for byte" % variant)
+    archived_icons = {n: files[n] for n in entries if n.startswith("yafc-payload/hmi/icons/")}
+    if archived_icons != icons:
+        bad("%s zip Hero icon names or bytes differ from the source" % variant)
+    else:
+        good("%s zip includes every Hero icon byte for byte" % variant)
     if any(files.get(name) != content for name, content in stub_payload.items()):
         bad("%s zip altered the native payload bytes" % variant)
     if modes[variant].get(probe) != 0o644:
@@ -162,13 +172,13 @@ for variant, entries in names.items():
     payload_hashes = {path: digest for digest, path in
                       (line.split(None, 1) for line in payload_sums)}
     covered = {"SyncMyMod/autoinstall.sh", "yafc-install.sh", "tools/apply-hmi-fragments.sh",
-               library, probe, "yafc-payload/camera.conf"} | fragments.keys()
+               library, probe, "yafc-payload/camera.conf"} | fragments.keys() | icons.keys()
     if len(payload_sums) != len(covered) or set(payload_hashes) != covered or any(
             path not in files or hashlib.sha256(files[path]).hexdigest() != digest
             for path, digest in payload_hashes.items()):
         bad("%s zip payload SHA256SUMS does not match packaged files" % variant)
     else:
-        good("%s zip payload SHA256SUMS includes and verifies all HMI fragments" % variant)
+        good("%s zip payload SHA256SUMS includes and verifies all HMI fragments and Hero icons" % variant)
 
     start = files.get("START-HERE.txt", b"").decode("utf-8", "replace")
     lines = start.splitlines()
@@ -180,8 +190,9 @@ for variant, entries in names.items():
         bad("%s START-HERE.txt does not open with the WARNING block" % variant)
     else:
         good("%s START-HERE.txt opens with the WARNING block" % variant)
-    phrases = ("used only on a 2020 Explorer ST", "not yet field-tested", "FMods",
-               "UNKNOWN", "parked", "at your own risk", "warranty", DOCS + "DISCLAIMER.md",
+    phrases = ("2020 Explorer ST", "other vehicles are unproven", "FMods",
+               "about two minutes", "yafc-install/", "seen.log", "issues/new/choose",
+               "parked", "at your own risk", "warranty", DOCS + "DISCLAIMER.md",
                DOCS + "RECOVERY.md", "request ID", "Do not retry.")
     if variant == "install":
         phrases += ("fullscreen rear video appeared early", "The 360 view",

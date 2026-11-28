@@ -151,9 +151,9 @@ grep -Fq 'rvcPopupComponentHeight: 480' "$S/fordhmi/qml/$T1" \
 grep -q 'yafcViews' "$S/fordhmi/qml/$T2" && ok "popup state inserted" || no "popup state missing"
 grep -q 'yafcCover' "$S/fordhmi/qml/$T2" && ok "cover inserted" || no "cover missing"
 grep -q 'yafcSelectView' "$S/fordhmi/qml/$T2" && ok "selector inserted" || no "selector missing"
-grep -Fq 'top: yafcShown ? undefined : container.bottom' "$S/fordhmi/qml/$T2" \
+grep -Fq 'top: yafcHideChrome ? undefined : container.bottom' "$S/fordhmi/qml/$T2" \
     && ok "bottom strip anchor guarded" || no "bottom strip anchor not guarded"
-grep -Fq 'topMargin: yafcShown ? UiTheme.styleRoot.generalMarginBig : UiTheme.styleRoot.generalMarginSmaller + UiTheme.styleRoot.generalMarginBig' "$S/fordhmi/qml/$T2" \
+grep -Fq 'topMargin: yafcHideChrome ? UiTheme.styleRoot.generalMarginBig : UiTheme.styleRoot.generalMarginSmaller + UiTheme.styleRoot.generalMarginBig' "$S/fordhmi/qml/$T2" \
     && ok "stock text margin guarded" || no "stock text margin not guarded"
 grep -q 'yafcRearRadio' "$S/fordhmi/qml/$T3" && ok "settings rows inserted" || no "settings rows missing"
 grep -q 'yafcCamFull' "$S/fordhmi/qml/$T4" && ok "root property inserted" || no "root property missing"

@@ -10,7 +10,7 @@
             IconPushButton {
                 id: yafcViewButton
                 objectName: "RVCPopup_yafcViewButton"
-                visible: yafcShown && !yafcCover
+                visible: yafcActive && !yafcCover
                 z: 1
                 iconId: "parkingfeatures/icon_switch_camera"
                 shape: HmiGui.Rectangular
@@ -37,7 +37,10 @@
                 }
                 width: yafcViewRow.width
                 height: yafcViewRow.height
-                visible: yafcShown && yafcPanelOpen && !yafcCover
+                // The panel is gated on its own flag alone. Adding the chrome and
+                // cover terms made it blink away whenever the 100 ms poll touched
+                // the cover.
+                visible: yafcPanelOpen
                 z: 1000
 
                 Row {
@@ -45,12 +48,12 @@
                     spacing: 10
                     Repeater {
                         model: showFrontCamera ? [
-                            { key: "front360", icon: "parkingfeatures/icon_360_view" },
+                            { key: "front360", icon: "parkingfeatures/icon_hero_view" },
                             { key: "front",    icon: "parkingfeatures/icon_normal_front_view" },
                             { key: "frontwide", icon: "parkingfeatures/icon_pano_front_view" },
                             { key: "front360only", icon: "parkingfeatures/icon_360_view" }
                         ] : [
-                            { key: "rear360", icon: "parkingfeatures/icon_360_view" },
+                            { key: "rear360", icon: "parkingfeatures/icon_hero_view" },
                             { key: "rear",    icon: "parkingfeatures/icon_normal_rear_view" },
                             { key: "wide",    icon: "parkingfeatures/icon_pano_rear_view" },
                             { key: "full360", icon: "parkingfeatures/icon_360_view" }
@@ -72,7 +75,7 @@
             IconPushButton {
                 id: yafcZoomInButton
                 objectName: "RVCPopup_yafcZoomInButton"
-                visible: yafcShown && !yafcCover && !showFrontCamera && (yafcViewKey === "rear" || yafcViewKey === "rear360") && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                visible: yafcActive && !yafcCover && !showFrontCamera && (yafcViewKey === "rear" || yafcViewKey === "rear360") && showZoomButton && !ViewController.qrvc && !yafcCancelShown
                 z: 1
                 iconId: "shared/icon_mapzoom_in"
                 shape: HmiGui.Rectangular
@@ -90,7 +93,7 @@
             IconPushButton {
                 id: yafcZoomOutButton
                 objectName: "RVCPopup_yafcZoomOutButton"
-                visible: yafcShown && !yafcCover && yafcViewKey === "zoom" && showZoomButton && !ViewController.qrvc && !yafcCancelShown
+                visible: yafcActive && !yafcCover && yafcViewKey === "zoom" && showZoomButton && !ViewController.qrvc && !yafcCancelShown
                 z: 1
                 iconId: "shared/icon_mapzoom_out"
                 shape: HmiGui.Rectangular

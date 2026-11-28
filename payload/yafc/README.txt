@@ -25,9 +25,38 @@ library bytes, or retains the journal for RUN-YAFC-RECOVER. There is no
 
 On the developer's 2020 Explorer ST, fullscreen rear video appeared before
 SYNC finished starting. The 360 view, parking sensors and view buttons
-appeared later. This packaged installer has not been verified on a radio.
+appeared later. On that one radio the packaged installer was run: install,
+uninstall and reinstall all completed, and the owner saw the views, the view
+selector, Zoomed View, the Hero icon and the "Please wait" cover work. Every
+other vehicle and firmware is UNPROVEN.
 https://github.com/patubergods/yafc/blob/main/docs/ARCHITECTURE.md
 https://github.com/patubergods/yafc/blob/main/docs/CAMERA-PIPELINE.md
+
+On-screen notices
+-----------------
+
+Both the dispatcher and the worker show a message on the radio through the
+utserviceutility popup, best effort and bounded to 5 seconds. It never changes
+the outcome. Expect a success, failure or no-marker message within about two
+minutes of plugging the drive in. The text file is /fs/tmpfs/yafc-popup.txt.
+Whether the text appears on every radio is UNPROVEN beyond the one radio.
+
+Logs and reporting a problem
+----------------------------
+
+Everything is in the folder yafc-install/ at the root of the USB drive: DONE
+(success receipt lines), FAILED (failure receipt with the reason),
+install.log (full timestamped log), request-<ID>/ (one folder per run with its
+own install.log, probe.out, probe.err, and DONE or FAILED), and seen.log (one
+line per plug-in). "stick seen; no marker, nothing done" means the drive was
+noticed but no marker was armed, so nothing changed; the install marker is
+used up after a success, so re-arm by copying a fresh install zip.
+
+YAFC does not upload logs or collect telemetry. To report a problem, open an
+issue at https://github.com/patubergods/yafc/issues/new/choose and attach the
+whole yafc-install folder zipped, plus which zip and version and the
+vehicle/radio. Do not post photos that show the VIN or other personal data.
+https://github.com/patubergods/yafc/blob/main/docs/TROUBLESHOOTING.md
 
 The installer seeds /fs/rwdata/yafc/camera.conf if absent and preserves existing
 settings. The DISABLE file in the same directory tells the library to stand
@@ -62,8 +91,10 @@ replies.
 
 Limits: a ready file proves the post and geometry acceptance by the compositor,
 not displayed pixels or a painted late bay. QML timer stalls are not detected
-by the native; LEASE_MS is local-only. DISABLE prevents new requests but does
-not kill an active lease.
+by the native; LEASE_MS only gates the ready file. A published layout holds
+until a newer record replaces it, the session changes, DISABLE is set, or the
+popup writes compose=0. scale_quality (Screen property 56) is 2 by default,
+0 sends nothing, 1 is fastest.
 
 Unproven QNX behaviours
 -----------------------
@@ -90,7 +121,9 @@ is written. An old receipt never passes for the current request.
 
 hmi/ holds the on-screen edits as fragments: our code plus short anchor strings,
 applied to the radio's own HMI files by tools/apply-hmi-fragments.sh. No Ford QML
-is redistributed. The installer builds them into /fs/images/overlay_00--yafc.img.
+is redistributed. It also holds YAFC's own Hero icon artwork under hmi/icons/
+(ten 50x50 PNGs: day and night, five states); the installer verifies and reads
+back both. The installer builds them into /fs/images/overlay_00--yafc.img.
 https://github.com/patubergods/yafc/blob/main/docs/HMI-PATCH.md
 
 What used to be here

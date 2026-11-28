@@ -71,7 +71,7 @@ implied. No support. It may brick the unit or show a wrong or missing camera pic
 We are not responsible for accidents, damage, injury or a voided warranty. Off-road,
 parked, closed-course use only; never rely on it to decide whether it is safe to move.
 If you do not agree, do not use it. See https://github.com/patubergods/yafc/blob/main/docs/DISCLAIMER.md.
-YAFC for SYNC 3. Design used only on a 2020 Explorer ST; this installer is not yet field-tested.
+YAFC for SYNC 3. Developed on a 2020 Explorer ST, where install, uninstall and reinstall ran once; other vehicles are unproven.
 
 WHAT THIS STICK DOES
 $what
@@ -82,13 +82,23 @@ Install only while parked.
 
 STEPS
 1. Back up the USB drive. Unzip to the root of a drive that already works with the USB hook.
-2. Park with the brake held, turn the ignition on, wait for SYNC, then plug it in. Install time is UNKNOWN.
-3. For a confirmed DONE below, restart SYNC: hold Power + Seek-Right about 10 seconds.
+2. Park with the brake held, turn the ignition on, wait for SYNC, then plug it in. Leave it alone.
+3. Within about two minutes the radio should show a message: success, failure, or "no marker armed".
+   Do not pull the drive before a message appears or two minutes pass.
+4. After a success message, restart SYNC: hold Power + Seek-Right about 10 seconds.
 
-CHECK: In yafc-install/, match the DONE or FAILED request ID to this run in install.log.
+LOGS, on this USB drive in the folder yafc-install/:
+  DONE         the success receipt.   FAILED   the failure receipt and the reason.
+  install.log  the full log.          request-<ID>/  the detailed receipts of one run.
+  seen.log     one line per plug-in, including when nothing was armed.
+
+CHECK: match the DONE or FAILED request ID to this run in install.log.
 If $MARK.running remains or the result is unclear, preserve the stick and logs.
 Do not retry. Recovery: https://github.com/patubergods/yafc/blob/main/docs/RECOVERY.md.
 UNDO: $undo
+
+PROBLEMS: open an issue at https://github.com/patubergods/yafc/issues/new/choose and attach the
+whole yafc-install folder as a zip. Do not post photos that show your VIN or other personal data.
 EOF
 }
 

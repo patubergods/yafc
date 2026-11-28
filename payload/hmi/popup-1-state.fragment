@@ -9,11 +9,15 @@
     // only the Settings page persists preferences.
     property bool yafcPanelOpen: false
     property bool yafcHideChromePref: true
-    readonly property bool yafcHideChrome: yafcShown && yafcHideChromePref
+    readonly property bool yafcHideChrome: yafcHideChromePref
+    // The mod is active whenever the config asks the native to compose. The
+    // custom controls and backdrop follow this, not yafcHideChrome: with the
+    // bars shown (hide_chrome=0) the custom view still needs its selector.
+    property bool yafcActive: false
     property string yafcView: "rear"
-    // Which view button is lit. Not always the config value: the library
-    // composes only the combined views, so Trailer and Wide keep the config
-    // value while Ford shows another view id.
+    // Which view button is lit. Not always the config value: several buttons
+    // share a composed layout and differ only in the Ford stream or its zoom
+    // level, so the config no longer identifies the selected button.
     property string yafcViewKey: "rear360"
     property bool yafcSensors: true
     property bool yafcZoom: false
@@ -29,8 +33,9 @@
                      sen: [456,522,344,718], senScale: 1.8,
                      fill: [[0,518,800,4],[0,1240,800,40]],
                      sensors: true,  zoom: false },
-        // Trailer: Ford's zoom applied to the plain rear stream, laid out like
-        // Rear Only. Zoom on the Hero stream gives the skewed picture.
+        // Trailer: Ford's zoom level applied to the plain rear stream, laid out
+        // like Rear Only. Ford stays on IPMBRearNormal; selecting Ford's own
+        // IPMBRearZoom stream gives the skewed Hero picture.
         "zoom":    { ford: AL2HMIBridge.RVCSource.IPMBRearNormal, cfg: "rear",
                      camSrc: "0,6,720,474", camDst: "0,400,800,480",
                      bayDst: "0,0,0,0", compose: true,
@@ -128,7 +133,7 @@
         yafcFrontViewPref = "front360";
         yafcRearViewPref = "rear360";
         yafcCoverMs = 700;
-        if (yafcDisabled()) return false;
+        if (yafcDisabled()) { yafcHideChromePref = false; yafcActive = false; return false; }
         var mode = "pass";
         var enabled = true;
         var sawEnabled = false;
@@ -159,7 +164,11 @@
         } catch (e) {
             console.log("yafc: config read failed: " + e);
         }
-        return enabled && mode === "compose";
+        // Only hide the chrome when the config asks the library to compose. With
+        // the mod off, Ford keeps its own layout and its own chrome.
+        yafcActive = enabled && mode === "compose";
+        if (!yafcActive) yafcHideChromePref = false;
+        return yafcActive;
     }
 
     // Session identity: PID.monotonic_sec.monotonic_nsec;
@@ -171,11 +180,8 @@
     // property sets, not that the display painted the result. QML timers stall
     // with the render thread; a late-created bay may never paint.
     property string yafcSession: ""
-    property string yafcRequest: ""
-    property string yafcLastAck: ""
     property string yafcRequestedKey: ""
     property int yafcSeq: 0
-    property double yafcSentAt: 0
     property string yafcViewUrl: "file:///fs/tmpfs/yafc-view"
     property string yafcReadyUrl: "file:///fs/tmpfs/yafc-ready"
     property string yafcSessionUrl: "file:///fs/tmpfs/yafc-session"
@@ -200,23 +206,29 @@
         } catch (e) { return false; }
     }
 
-    function yafcPublishView(v) {
+    // keep: renew the layout already on screen even if Ford's report no longer
+    // matches. Ford's zoom changes the reported stream, and without renewal the
+    // native's 500 ms lease expires and the Hero geometry comes back.
+    function yafcPublishView(v, keep) {
         var e = yafcViews[v];
-        if (!yafcSession || e === undefined || e.ford !== yafcFordView ||
+        if (!yafcSession || e === undefined || (keep !== true && e.ford !== yafcFordView) ||
                 showFrontCamera !== (v.indexOf("front") === 0) || yafcSeq >= 999999999) return false;
         var hero = yafcViews.rear360;
-        // compose=1 only for views the native should reshape. 360-only views
-        // use the stock geometry and set compose=0 so the native acknowledges
-        // without changing the window. The native never composes for a view
-        // whose published compose flag is 0.
+        // compose=1 only for views the library should reshape. The native
+        // acknowledges a compose=0 record without changing the window.
         var compose = (e.compose === true || e.cfg === "rear360" || e.cfg === "front360") ? "1" : "0";
+        // Another popup instance may share the mailbox; the native ignores a
+        // sequence number below the newest it has seen, so catch up first.
+        var cur = yafcRead(yafcViewUrl);
+        if (cur.indexOf(yafcSession) === 0) {
+            var m = /^([0-9]{1,9});/.exec(cur.substring(yafcSession.length));
+            if (m) yafcSeq = Math.max(yafcSeq, Number(m[1]));
+        }
         var text = yafcSession + (++yafcSeq) + ";" + compose + ";" +
                 [e.camSrc || hero.camSrc, e.camDst || hero.camDst,
                  e.baySrc || hero.baySrc, e.bayDst || hero.bayDst].join(",") + "\n";
         if (!yafcPut(text)) return false;
-        yafcRequest = text;
         yafcRequestedKey = v;
-        yafcSentAt = Date.now();
         return true;
     }
 
@@ -226,10 +238,16 @@
     property int yafcZoomExtraMs: 300
     property int yafcCoverMs: 700
     readonly property int yafcFordView: AL2HMIBridge.rvcSource.multicameraShowing
-    onYafcFordViewChanged: yafcFollowFord()
+    // The Ford report is the completion signal for a view switch: commit the
+    // pending key here instead of waiting for the next 100 ms poll tick.
+    onYafcFordViewChanged: yafcCommitPendingView()
 
     function yafcApplyLayout(v) {
         var e = yafcViews[v];
+        if (e === undefined) return false;
+        // The look (divider, sensors, Zoom position) follows Ford's report at
+        // once, as in the proven build. The mailbox write is best effort: the
+        // poll republishes yafcViewKey until it lands.
         yafcViewKey = v;
         yafcView = e.cfg;
         yafcSensors = e.sensors === true;
@@ -237,6 +255,7 @@
         yafcZoom = e.zoom === true;
         yafcZoomTries = 0;
         yafcShown = true;
+        if (yafcSession) yafcPublishView(v);
         yafcSyncZoom();
         return true;
     }
@@ -266,88 +285,153 @@
         yafcCoverTimer.restart();
     }
 
+    function yafcRelease() {
+        // The native accepts only <session><seq>;<compose>;<16 rects>\n. The
+        // old ";off" sentinel failed that parser and was ignored, so it never
+        // restored the factory window. compose=0 is the record that makes the
+        // native leave composition; the rectangles are validated, not applied.
+        if (!yafcSession || yafcSeq >= 999999999) return;
+        var hero = yafcViews.rear360;
+        yafcPut(yafcSession + (++yafcSeq) + ";0;" +
+                [hero.camSrc, hero.camDst, hero.baySrc, hero.bayDst].join(",") + "\n");
+    }
+
     function yafcStock() {
-        yafcShown = false;
-        yafcPanelOpen = false;
         yafcZoomTimer.stop();
-        yafcCoverTimer.stop();
-        if (yafcRequest && yafcRead(yafcViewUrl) === yafcRequest)
-            yafcPut(yafcSession + yafcSeq + ";off\n");
-        yafcRequest = "";
-        yafcLastAck = "";
+        yafcRelease();
         yafcRequestedKey = "";
     }
 
+    // Completes a view picked with yafcSelectView once Ford reports it. The key
+    // stays pending on a failed publish so the timeout can retry.
+    function yafcCommitPendingView() {
+        var v = yafcPendingView;
+        // A hide clears the pending key, so no extra visibility gate is needed
+        // here; the root `visible` property is not reliable on this unit.
+        if (v === "" || yafcViews[v] === undefined) return;
+        if (yafcViews[v].ford !== yafcFordView ||
+                showFrontCamera !== (v.indexOf("front") === 0)) return;
+        if (!yafcApplyLayout(v)) return;
+        yafcPendingView = "";
+        yafcViewTimeout.stop();
+        if (yafcCover) yafcCoverDwell();
+    }
+
+    // Takes the layout for Ford's reported view, or publishes the layout
+    // already taken once the session appears. The report decides the key; the
+    // session only enables publishing.
     function yafcFollowFord() {
         if (!yafcSession) return;
-        if (yafcRequestedKey && yafcViews[yafcRequestedKey].ford === yafcFordView &&
+        if (yafcPendingView !== "") { yafcCommitPendingView(); return; }
+        if (yafcRequestedKey !== "" && yafcViews[yafcRequestedKey] !== undefined &&
+                yafcViews[yafcRequestedKey].ford === yafcFordView &&
                 showFrontCamera === (yafcRequestedKey.indexOf("front") === 0)) return;
-        yafcStock();
-        var key = yafcPendingView || yafcDefaultKey(showFrontCamera);
-        if (yafcViews[key].ford !== yafcFordView && !yafcPendingView) {
-            var keys = showFrontCamera ? ["front360", "front", "frontwide"] : ["rear360", "rear", "wide"];
-            for (var i = 0; i < keys.length; i++)
-                if (yafcViews[keys[i]].ford === yafcFordView) key = keys[i];
+        // Keep the layout already on screen when it still matches Ford; at
+        // entry go to the configured default first, then any view that matches
+        // the report. Several views share a Ford id (rear360/full360), so the
+        // raw view key alone would pick the wrong button for the preference.
+        var key = "";
+        if (yafcShown && yafcViews[yafcViewKey] !== undefined &&
+                yafcViews[yafcViewKey].ford === yafcFordView &&
+                showFrontCamera === (yafcViewKey.indexOf("front") === 0)) key = yafcViewKey;
+        if (key === "") {
+            key = yafcDefaultKey(showFrontCamera);
+            if (yafcViews[key].ford !== yafcFordView) {
+                var keys = showFrontCamera ? ["front360", "front", "frontwide"] : ["rear360", "rear", "wide"];
+                for (var i = 0; i < keys.length; i++)
+                    if (yafcViews[keys[i]].ford === yafcFordView) { key = keys[i]; break; }
+            }
         }
-        if (yafcViews[key].ford === yafcFordView && !yafcPublishView(key)) yafcStop();
+        if (yafcViews[key].ford !== yafcFordView) return;
+        yafcApplyLayout(key);
     }
 
     function yafcPoll() {
-        if (!yafcSession) return;
+        // A latched hide keeps the release in force; only an explicit show or
+        // a tap resumes. Otherwise the native writes the session file on its
+        // first post, which happens after this popup opens. Force the entry
+        // route here too: on this unit the root `visible` property did not
+        // always track the popup being up.
+        if (yafcHidden) return;
+        if (!yafcSession) { yafcVisibleChanged(true); return; }
         if (!yafcLoadConfig() || yafcRead(yafcSessionUrl) !== yafcSession) { yafcStop(); return; }
-        if (!yafcRequest) return;
-        var elapsed = Date.now() - yafcSentAt;
-        if (elapsed < 0 || elapsed >= 400) { yafcStop(); return; }
-        var key = yafcRequestedKey;
-        if (yafcViews[key].ford !== yafcFordView) { yafcFollowFord(); return; }
-        var reply = yafcRead(yafcReadyUrl);
-        if (reply !== yafcRequest) {
-            if (yafcShown && reply !== yafcLastAck) yafcStop();
+        if (!yafcShown || yafcRequestedKey === "") { yafcFollowFord(); return; }
+        // Ford changed the stream under the published layout. Re-take a layout
+        // that matches its report instead of letting the 500 ms lease expire;
+        // a pending pick owns the change and waits for its own report.
+        if (yafcViews[yafcViewKey] === undefined) return;
+        if (!yafcZoom && yafcViews[yafcViewKey].ford !== yafcFordView) {
+            if (yafcPendingView === "") yafcFollowFord();
             return;
         }
-        // Two advancing replies are required on entry. A leftover file (even
-        // for this PID) cannot both answer and renew a request.
-        var confirmed = yafcLastAck !== "";
-        yafcLastAck = reply;
-        if (!yafcPublishView(key)) { yafcStop(); return; }
-        if (confirmed && !yafcShown) {
-            yafcApplyLayout(key);
-            yafcPendingView = "";
-            yafcViewTimeout.stop();
-            if (yafcCover) yafcCoverDwell();
-            if (!yafcUserPicked) yafcDefaultTimer.restart();
-        }
+        // Renew the lease. Never touch the cover or the default timer here;
+        // both start from the report, and a 100 ms renewal would postpone them.
+        yafcPublishView(yafcViewKey, yafcZoom);
     }
 
     function yafcReconcile() {
-        // No matching Ford report or composition reply: return control to Ford.
-        yafcStop();
+        // No report arrived for the pending view. Retry the selected key when
+        // Ford now reports its stream, then fall back to whatever Ford reports;
+        // a camera screen must not stay black.
+        var pending = yafcPendingView;
+        yafcPendingView = "";
+        var k = "";
+        if (pending !== "" && yafcViews[pending] !== undefined &&
+            yafcViews[pending].ford === yafcFordView &&
+            showFrontCamera === (pending.indexOf("front") === 0)) k = pending;
+        if (k === "" && yafcViews[yafcViewKey] !== undefined &&
+            yafcViews[yafcViewKey].ford === yafcFordView &&
+            showFrontCamera === (yafcViewKey.indexOf("front") === 0)) k = yafcViewKey;
+        if (k === "") {
+            // Rear and Trailer share the IPMBRearNormal report; prefer the plain
+            // view so a failed Rear Only tap does not silently become Zoomed View.
+            var pref = showFrontCamera ? "front" : "rear";
+            if (yafcViews[pref].ford === yafcFordView) k = pref;
+            else for (var n in yafcViews)
+                if (yafcViews[n].ford === yafcFordView) { k = n; break; }
+        }
+        if (k !== "" && yafcApplyLayout(k) && yafcCover) yafcCoverDwell();
+        else yafcCover = false;
     }
 
     function yafcSelectView(v) {
+        // A tap proves the popup is up; if a hide latched the poll, resume it.
+        yafcHidden = false;
         var e = yafcViews[v];
-        if (!yafcShown || e === undefined || yafcCover) return;
-        var reply = yafcRead(yafcReadyUrl), elapsed = Date.now() - yafcSentAt;
-        if (!yafcLoadConfig() || yafcRead(yafcSessionUrl) !== yafcSession ||
-                elapsed < 0 || elapsed >= 400 || (reply !== yafcLastAck && reply !== yafcRequest)) {
-            yafcStop();
-            return;
-        }
+        // Taps are serialized while a switch settles. No yafcShown gate: a tap
+        // must still work when the first layout has not been taken yet.
+        if (e === undefined || yafcCover) return;
+        if (!yafcLoadConfig()) { yafcStop(); return; }
+        if (yafcSession && yafcRead(yafcSessionUrl) !== yafcSession) { yafcStop(); return; }
         yafcUserPicked = true;
         yafcDefaultTimer.stop();
+        // Only leaving Zoomed View settles slowly.
         yafcZoomSwitch = yafcZoom && e.zoom !== true;
         yafcPendingView = v;
-        yafcStock();
-        yafcCover = yafcCoverMs > 0 && (e.ford !== yafcFordView || e.zoom === true || yafcZoom);
-        yafcViewTimeout.restart();
-        if (yafcFordView === e.ford) yafcFollowFord();
-        else _hmirvcController.selectRVCView(e.ford);
+        // Choosing a view closes the row.
+        yafcPanelOpen = false;
+        if (yafcFordView === e.ford) {
+            // Same stream, possibly only Ford's zoom level changes: cover the
+            // re-zoom, then apply at once because no report will follow.
+            if (yafcCoverMs > 0 && (e.zoom === true || yafcZoom)) { yafcCover = true; yafcViewTimeout.restart(); }
+            yafcCommitPendingView();
+        } else {
+            if (yafcCoverMs > 0) yafcCover = true;
+            yafcViewTimeout.restart();
+            _hmirvcController.selectRVCView(e.ford);
+        }
     }
 
     // Only Settings persists preferences. Reset the RAM selection on close and
     // again on entry for the camera Ford actually opened.
     property bool yafcUserPicked: false
     property bool yafcShown: false
+    // Set only by an explicit hide after the popup was active. The poll cannot
+    // be gated on `visible` (it did not track the popup on this unit), so this
+    // latch is what keeps a hidden but still-loaded popup from re-adopting the
+    // session and undoing the compose=0 release. An explicit show or a tap
+    // clears it.
+    property bool yafcHidden: false
     function yafcDefaultKey(front) {
         var map = front ? { "front360": "front360", "front": "front", "360": "front360only", "frontwide": "frontwide" }
                         : { "rear360": "rear360", "rear": "rear", "360": "full360", "rearwide": "wide" };
@@ -356,60 +440,95 @@
     }
     function yafcApplyDefault() {
         var key = yafcDefaultKey(showFrontCamera);
-        if (yafcShown && !yafcUserPicked && key !== yafcViewKey) yafcSelectView(key);
+        if (yafcUserPicked || yafcViews[key] === undefined) return;
+        // Re-apply when Ford still shows another stream, even if the local key
+        // already matches: without a session the local layout cannot compose.
+        if (yafcShown && key === yafcViewKey && yafcViews[key].ford === yafcFordView) return;
+        yafcSelectView(key);
     }
 
     function yafcStop() {
-        if (!yafcSession) return;
         yafcStock();
         yafcDefaultTimer.stop();
         yafcViewTimeout.stop();
+        yafcCoverTimer.stop();
         yafcPendingView = "";
         yafcCover = false;
         yafcZoomSwitch = false;
+        yafcPanelOpen = false;
+        yafcUserPicked = false;
+        yafcShown = false;
         yafcSession = "";
     }
 
     function yafcVisibleChanged(vis) {
-        if (!vis) { yafcStop(); return; }
-        if (yafcSession || !yafcLoadConfig()) return;
-        var session = yafcRead(yafcSessionUrl);
-        if (!/^[1-9][0-9]*\.[0-9]+\.[0-9]+;$/.test(session)) return;
-        var records = [yafcRead(yafcViewUrl), yafcRead(yafcReadyUrl)];
-        for (var i = 0; i < records.length; i++) {
-            if (records[i].indexOf(session) !== 0) continue;
-            var seq = /^([0-9]{1,9});/.exec(records[i].substring(session.length));
-            if (seq) yafcSeq = Math.max(yafcSeq, Number(seq[1]));
+        if (!vis) {
+            // Hide: release the lease, close the panel, clear the transient
+            // selection. Latch only when the popup was active; at
+            // Component.onCompleted(false) on a unit where `visible` is
+            // unreliable, the poll must still be able to take the first layout.
+            if (yafcShown || yafcSession !== "") yafcHidden = true;
+            yafcStop();
+            return;
         }
-        yafcSession = session;
-        yafcUserPicked = false;
-        yafcFollowFord();
+        yafcHidden = false;
+        if (!yafcLoadConfig()) return;
+        var session = yafcRead(yafcSessionUrl);
+        if (/^[1-9][0-9]*\.[0-9]+\.[0-9]+;$/.test(session) && session !== yafcSession) {
+            var records = [yafcRead(yafcViewUrl), yafcRead(yafcReadyUrl)];
+            for (var i = 0; i < records.length; i++) {
+                if (records[i].indexOf(session) !== 0) continue;
+                var seq = /^([0-9]{1,9});/.exec(records[i].substring(session.length));
+                if (seq) yafcSeq = Math.max(yafcSeq, Number(seq[1]));
+            }
+            yafcSession = session;
+            yafcUserPicked = false;
+        }
+        // camera.conf is enough to take the layout: the native composes from it.
+        // The session only enables live view changes through the mailbox.
+        if (!yafcShown) {
+            if (yafcSession) yafcFollowFord();
+            else if (yafcPendingView === "") {
+                yafcApplyLayout(yafcDefaultKey(showFrontCamera));
+                yafcViewTimeout.stop();
+                yafcCover = false;
+            }
+            // Wait for Ford to settle on its opening view before moving to the
+            // preference, unless the user picks first.
+            if (!yafcUserPicked) yafcDefaultTimer.restart();
+        } else if (yafcRequestedKey === "") {
+            // The layout was taken without a session. Publish it now.
+            yafcFollowFord();
+        }
     }
 
-    Timer { interval: 100; repeat: true; running: yafcSession !== ""; onTriggered: yafcPoll() }
+    // Always on: the popup only exists while Ford has it up, and yafcPoll decides
+    // from camera.conf and the session file. Gating this on `visible` meant the
+    // layout was never taken when that property did not track the popup being up.
+    Timer { interval: 100; repeat: true; running: true; onTriggered: yafcPoll() }
 
     Component.onCompleted: yafcVisibleChanged(visible)
 
     // Keep the stock bindings intact when the popup is not in YAFC mode.
-    Binding { target: zoomButton; property: "visible"; value: false; when: yafcShown }
-    Binding { target: cameraViewButtons; property: "visible"; value: false; when: yafcShown }
-    Binding { target: pdcImage; property: "visible"; value: false; when: yafcShown }
-    Binding { target: bottomContainer; property: "source"; value: ""; when: yafcShown }
+    Binding { target: zoomButton; property: "visible"; value: false; when: yafcHideChrome }
+    Binding { target: cameraViewButtons; property: "visible"; value: false; when: yafcHideChrome }
+    Binding { target: pdcImage; property: "visible"; value: false; when: yafcHideChrome }
+    Binding { target: bottomContainer; property: "source"; value: ""; when: yafcHideChrome }
     Binding {
         target: container
         property: "height"
         value: _rVCPopupStyle.yafcPopupComponentHeight
-        when: yafcShown
+        when: yafcHideChrome
     }
     Binding {
         target: bottomContainer
         property: "height"
         value: UiTheme.styleRoot.navigationBarHeight + UiTheme.styleRoot.generalMarginBig * 2
-        when: yafcShown
+        when: yafcHideChrome
     }
-    Binding { target: cancelButton; property: "visible"; value: yafcCancelShown; when: yafcShown }
-    Binding { target: textLabel; property: "visible"; value: showZoomButton && !yafcHideChrome; when: yafcShown }
+    Binding { target: cancelButton; property: "visible"; value: yafcCancelShown; when: yafcHideChrome }
+    Binding { target: textLabel; property: "visible"; value: showZoomButton && !yafcHideChrome; when: yafcHideChrome }
 
-    onShowFrontCameraChanged: if (yafcSession) { yafcStop(); yafcVisibleChanged(visible); }
+    onShowFrontCameraChanged: if (visible) { yafcStop(); yafcVisibleChanged(true); }
 
     readonly property bool yafcCancelShown: (showCancelButton && !ViewController.qrvc && cameraViewActivatedByReverseGear) || showCancelButtonBoundaryAlertRVC

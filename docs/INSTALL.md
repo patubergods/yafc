@@ -18,8 +18,9 @@ sh tools/make-usb.sh <mount-point>  # the stick
 ```
 
 `build-slot.sh` refuses a build that would not be safe in the slot (see [BUILD.md](BUILD.md)).
-`make-usb.sh` writes a hash list (`yafc-payload/SHA256SUMS`) and refuses to overwrite an armed
-stick.
+`make-usb.sh` writes a hash list (`yafc-payload/SHA256SUMS`) covering the library,
+probe, configuration, every fragment and every Hero icon, and refuses to overwrite
+an armed stick.
 It refuses an older slot binary that lacks the view mailbox. Rebuild before staging the stick.
 
 ## The stick layout
@@ -32,6 +33,7 @@ It refuses an older slot binary that lacks the view mailbox. Rebuild before stag
   yafc-payload/slotprobe        the loader probe
   yafc-payload/camera.conf      the default configuration
   yafc-payload/hmi/*.fragment   the on-screen edits
+  yafc-payload/hmi/icons/       YAFC's Hero icon artwork (ten PNGs)
   yafc-payload/SHA256SUMS
   tools/apply-hmi-fragments.sh
   RUN-YAFC-*                    you create exactly one
@@ -50,9 +52,12 @@ Create **exactly one** marker at the stick root. The dispatcher refuses if it fi
 | `RUN-YAFC-RECOVER` | Restores the journaled previous state from an interrupted install or remove. Refuses when the journal does not authenticate, a file is not at its recorded digest, or a layer is busy. The marker must be on a fresh stick (the `.running` file from the failed request is on the old stick, which does nothing). |
 | `RUN-YAFC-DISABLE` | Writes the kill switch. No mount work. |
 
-The design has been used on one 2020 Explorer ST with private tooling. **UNPROVEN:** the
-packaged installer, including its HMI image path, has not been run on a radio. Host mocks do
-not establish that it works on a unit.
+On one 2020 Explorer ST with the 10-inch portrait screen, the packaged installer was run:
+install, uninstall and reinstall all completed, and the owner saw the front and rear views, the
+view selector, Zoomed View, the Hero icon and the "Please wait" cover work after the install.
+That is **verified on one radio**. Still **UNPROVEN**: every other vehicle and firmware, the
+loader probe on a unit, `RUN-YAFC-RECOVER`, the DISABLE kill switch live, rehearsal on a radio,
+and the QNX items below. Host mocks do not establish that any of it works on a unit.
 
 **UNPROVEN:** the following QNX behaviours on a radio:
 - the `DL_DEBUG=libs` loader trace format used by the probe;
@@ -61,6 +66,19 @@ not establish that it works on a unit.
 - the file-image mount listing (`mount` output for loopback-backed images);
 - the second read-only inspection mount of the built image;
 - busy layers after a restart, when the installer replays the mount list.
+
+### On-screen notices and logs
+
+Both the dispatcher and the worker show a message on the radio through the `utserviceutility`
+popup, best effort and bounded to 5 seconds; it never changes the outcome. A success, failure,
+removed, rehearsal, recover or disabled variant appears within about two minutes of plugging the
+drive in, and the dispatcher adds a no-marker or refused message when nothing was armed. Whether
+the text appears on every radio is **UNPROVEN** beyond the one radio; the popup itself is
+`host-verified` against a fake `utserviceutility`.
+
+The receipts are in `yafc-install/` at the stick root: `DONE`, `FAILED`, `install.log`,
+`request-<ID>/` (its own `install.log`, `probe.out`, `probe.err`, `DONE` or `FAILED`) and
+`seen.log`, one line per plug-in. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ### The unowned-stock digest limit
 
@@ -73,8 +91,9 @@ independently verified and added here. This is one radio's build.
 
 Before any write, the installer inspects every other `overlay*.img` file under `/fs/images`.
 Each is mounted read-only for the duration of the check. If any provides or obscures
-one of the four QML target files, the slot library path, or the preserved-copy path, the
-installer refuses. An overlay that shadows a YAFC target cannot be installed beside it.
+one of the four QML target files, one of the ten Hero icon files, the slot library
+path, or the preserved-copy path, the installer refuses. An overlay that shadows a
+YAFC target cannot be installed beside it.
 The inspection mount is read-only and is unmounted before any write begins.
 
 ### Request-ID receipts
@@ -92,7 +111,9 @@ The camera library writes `/fs/tmpfs/yafc-session` (`PID.monotonic_sec.monotonic
 start. The HMI popup reads that session on entry and prefixes every mailbox record to
 `/fs/tmpfs/yafc-view` with it: `<session><seq>;<compose>;<16 rects>`. The library echoes the
 accepted record in `/fs/tmpfs/yafc-ready` after a successful Screen post with verified
-geometry. The popup composes its layout only after two advancing ready replies.
+geometry. The popup takes its layout from `camera.conf` without waiting for a session and
+renews the record every 100 ms while shown; a ready file confirms an accepted record but is
+not a gate. On hide it writes a `compose=0` record and halts its poll until shown again.
 
 A ready file proves that `screen_post_window` returned success and the compositor accepted the
 geometry properties. It does **not** prove that the display painted the result, that a late-created

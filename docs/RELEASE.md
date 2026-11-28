@@ -33,8 +33,10 @@ available on a source-built stick; there is no rehearsal download.
 
 The zips are byte-for-byte reproducible for one version: entries are sorted, timestamps are
 fixed, entries are stored rather than compressed, and modes are normalised. Two runs give the
-same `SHA256SUMS`. `YAFC_SKIP_BUILD=1` with `YAFC_LIB` and `YAFC_PROBE` replaces the payload with
-stub files and exists for the host test only; never publish a build made that way.
+same `SHA256SUMS`. Each zip carries every source fragment and all ten original Hero icon
+PNGs; `tools/test-make-release.sh` compares their bytes with the source. `YAFC_SKIP_BUILD=1`
+with `YAFC_LIB` and `YAFC_PROBE` replaces the native payload with stub files and exists for the
+host test only; never publish a build made that way.
 
 ## Checklist before attaching anything
 
@@ -58,29 +60,39 @@ stub files and exists for the host test only; never publish a build made that wa
 
    The two excluded files are the scan itself: they have to spell the pattern out.
 
-3. `START-HERE.txt` in each zip opens with the WARNING block and distinguishes design use on
-   one 2020 Explorer ST from the packaged installer, which has not been run on a radio. The
-   install zip describes early rear video and the later controls without promising exact times.
-   `tools/test-make-release.sh` checks this; read one anyway.
+3. `START-HERE.txt` in each zip opens with the WARNING block and says that the design ran on one
+   2020 Explorer ST with install, uninstall and reinstall once, that other vehicles are unproven,
+   and that the reader should expect an on-screen message within about two minutes. It lists the
+   logs in `yafc-install/` (`DONE`, `FAILED`, `install.log`, `request-<ID>/`, `seen.log`) and
+   links the issue page <https://github.com/patubergods/yafc/issues/new/choose>.
+   `tools/test-make-release.sh` checks the wording; read one anyway.
 4. The hashes are reviewed, not just generated: `cat dist/SHA256SUMS`, then build again and
    compare the file.
 5. `git status` shows source changes only. No zip, no `dist/`, no built binary.
+6. The release is created with `--prerelease`, so it is marked as a beta and not as a stable
+   build.
+
+Tags are named `v<major>.<minor>.<patch>-beta.<n>`; the version string in the zip names is the
+same without the leading `v`, for example tag `v0.1.0-beta.3` with
+`YAFC-0.1.0-beta.3-install.zip`.
 
 ## Publish
 
 Attach the zips to a release. Do not commit them.
 
 ```
-gh release create v0.3.0 \
-  dist/YAFC-0.3.0-install.zip \
-  dist/YAFC-0.3.0-uninstall.zip \
+gh release create v0.1.0-beta.3 \
+  dist/YAFC-0.1.0-beta.3-install.zip \
+  dist/YAFC-0.1.0-beta.3-uninstall.zip \
   dist/SHA256SUMS \
-  --title "YAFC 0.3.0" \
-  --notes "Unofficial hobby project. Design used only on a 2020 Explorer ST; packaged installer not field-tested. Read docs/DISCLAIMER.md."
+  --title "YAFC 0.1.0-beta.3" \
+  --prerelease \
+  --notes "Unofficial hobby project. Install, uninstall and reinstall ran once on one 2020 Explorer ST; every other vehicle is unproven. Read docs/DISCLAIMER.md."
 ```
 
 The tag and the version in the file names must match. On a private repository the release is
 visible only to people who already have access to it, which is the point: the zips are reviewed
 before anyone outside the repository sees them.
 
-**UNPROVEN:** no zip built by this script has been run on a radio. Say so in the release notes.
+**UNPROVEN:** the zips built by this script on any radio but the one 2020 Explorer ST. Say so in
+the release notes.

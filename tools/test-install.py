@@ -287,6 +287,7 @@ for path do
 done
 exec /bin/rm "$@"
 '''
+FAKE_POPUP = '#!/bin/sh\ncat "$2" >> "$FAKE/popups"\n'
 # A layer named in FAKE_SCRIPT_LAYER provides its own recovery scripts while mounted.
 FAKE_CKSUM = r'''#!/bin/sh
 case "${1-}" in
@@ -375,12 +376,15 @@ class Rig:
             shutil.copy2(REPO / "payload/config/camera.conf", m / "camera.conf")
             probe_file = m / "slotprobe"
             probe_file.write_bytes(probe_script(self.lib.as_posix(), probe).encode())
-            (m / "SHA256SUMS").write_text("".join(
-                f"{sha(m / n)}  yafc-payload/{n}\n" for n in ("libyafc.so", "slotprobe", "camera.conf")))
+            entries = ["libyafc.so", "slotprobe", "camera.conf"]
             if hmi:
                 shutil.copytree(REPO / "payload/hmi", m / "hmi")
                 (self.usb / "tools").mkdir(exist_ok=True)
                 shutil.copy2(REPO / "tools/apply-hmi-fragments.sh", self.usb / "tools/apply-hmi-fragments.sh")
+                entries += ["hmi/icons/" + p.relative_to(m / "hmi/icons").as_posix()
+                            for p in sorted((m / "hmi/icons").rglob("*.png"))]
+            (m / "SHA256SUMS").write_text("".join(
+                f"{sha(m / n)}  yafc-payload/{n}\n" for n in entries))
         if hmi:
             for rel, text in (stock or STOCK).items():
                 p = self.mp / "fordhmi/qml" / rel
@@ -412,7 +416,7 @@ class Rig:
         for n, body in (("mount", FAKE_MOUNT), ("umount", FAKE_UMOUNT), ("dinit", FAKE_DINIT),
                         ("devb-loopback", FAKE_LOOP), ("mkqnx6fs", FAKE_MKQNX6),
                         ("chkqnx6fs", FAKE_CHK), ("cp", FAKE_CP), ("mv", FAKE_MV), ("rm", FAKE_RM),
-                        ("cksum", FAKE_CKSUM)):
+                        ("utserviceutility", FAKE_POPUP), ("cksum", FAKE_CKSUM)):
             p = self.fake / n
             p.write_bytes(body.encode())
             p.chmod(p.stat().st_mode | stat.S_IEXEC)
@@ -457,6 +461,7 @@ class Rig:
         e["YAFC_HMI_DEV"] = (self.fake / "dev-yafchmi-0").as_posix()
         e["FAKE"] = self.fake.as_posix()
         e["SLOT_MP"] = self.mp.as_posix()
+        e["YAFC_POPUP_TEXT"] = (self.fake / "popup.txt").as_posix()
         e["PATH"] = f"{self.fake}:{os.environ['PATH']}"
         (self.fake / "worker.pid").unlink(missing_ok=True)
         (self.fake / "killed").unlink(missing_ok=True)
@@ -492,6 +497,10 @@ class Rig:
     def owner(self):
         p = self.ydata / "installer-owner"
         return p.read_text() if p.exists() else None
+
+    def popups(self):
+        p = self.fake / "popups"
+        return p.read_text() if p.exists() else ""
 
     def journal(self):
         return (self.ydata / "installer-pending").exists()
@@ -558,6 +567,8 @@ def main() -> int:
         check("1 no marker: nothing done, and the stick says so",
               r.returncode == 0 and not g.ops() and g.live() == vendor_sha
               and "no marker" in g.seen(), g)
+        check("1 no marker: an on-screen notice names the seen.log on the stick",
+              "no install or uninstall marker" in g.popups() and "seen.log" in g.popups(), g)
 
         # 2. two markers: refused
         g.reset()
@@ -576,7 +587,20 @@ def main() -> int:
         check("2b earlier .running kept: new request refused, nothing run",
               r.returncode == 1 and not g.ops() and g.live() == vendor_sha
               and (g.usb / "RUN-YAFC-INSTALL.running").read_text() == "20260101T000000-1\n"
-              and "earlier request" in g.seen(), g)
+              and "earlier request" in g.seen() and "did not finish" in g.popups(), g)
+
+        # 2c. a missing popup tool changes nothing; a missing worker is refused with a notice
+        g.reset()
+        (g.fake / "utserviceutility").unlink()
+        r = g.dispatch()
+        check("2c no marker without utserviceutility: exit 0, still logged, nothing done",
+              r.returncode == 0 and not g.ops() and "no marker" in g.seen(), g)
+        g.reset()
+        (g.usb / "yafc-install.sh").unlink()
+        r = g.dispatch()
+        check("2c missing worker: refused with a notice and a log line",
+              r.returncode == 1 and "missing yafc-install.sh" in g.seen()
+              and "yafc-install.sh is missing" in g.popups(), g)
 
         # 3. install happy path
         g.reset()
@@ -586,6 +610,8 @@ def main() -> int:
         check("3 install: preserved copy made, new library written, probe passed",
               r.returncode == 0 and g.done() and g.live() == yafc_sha
               and g.preserved() == vendor_sha and "passed the loader probe" in g.log(), g)
+        check("3 install: an on-screen notice says it installed and to restart",
+              "YAFC installed" in g.popups() and "Restart SYNC" in g.popups(), g)
         mp_ops = [o for o in ops if o in (f"umount {g.mp}", f"mount -uw {g.mp}")]
         check("3 install: stack reduced before the write, replayed exactly, marker consumed",
               [o for o in ops if o.startswith("mount -b -r -t qnx6 -o before")] ==
@@ -719,6 +745,9 @@ def main() -> int:
               [o.split()[0] for o in ops if o.startswith(("dinit", "devb-loopback", "mkqnx6fs", "chkqnx6fs"))] ==
               ["dinit", "devb-loopback", "mkqnx6fs", "chkqnx6fs"], g)
         imgroot = g.fake / "imgroot/fordhmi/qml"
+        icon_src = REPO / "payload/hmi/icons"
+        icons = sorted(p.relative_to(icon_src).as_posix() for p in icon_src.rglob("*.png"))
+        icon_targets = ["fordhmi/qml/themes/ford-10P-MY20/icons/" + rel for rel in icons]
 
         def text(rel):
             p = imgroot / rel
@@ -732,14 +761,18 @@ def main() -> int:
                 files = sorted(member.name.removeprefix("./") for member in image if member.isfile())
         except (OSError, tarfile.TarError):
             files = []
-        check("14 install HMI: only the four patched files are in the published image",
-              files == sorted("fordhmi/qml/" + rel for rel in STOCK)
+        check("14 install HMI: only the four patched QML files and the Hero icons are in the published image",
+              files == sorted(["fordhmi/qml/" + rel for rel in STOCK] + icon_targets)
               and not list(g.imgdir.glob(".yafc-build.*.img")), g)
+        check("14 install HMI: the published Hero icon bytes match the payload",
+              len(icons) == 10 and all(
+                  (g.fake / "imgroot" / rel).read_bytes() == (icon_src / src).read_bytes()
+                  for rel, src in zip(icon_targets, icons)), g)
         check("14 install HMI: all current fragments changed their targets",
               "rvcPopupComponentHeight: 480" in style and "yafcPopupComponentHeight: 1208" in style
               and "yafcViews" in popup and "yafcPublishView" in popup
               and "yafcCover" in popup and "yafcViewButton" in popup
-              and "top: yafcShown ? undefined : container.bottom" in popup
+              and "top: yafcHideChrome ? undefined : container.bottom" in popup
               and "property bool yafcEnabled:" in settings and "yafcCamFull" in root, g)
         replay = [i for i, op in enumerate(ops) if op.startswith("mount -b -r -t qnx6 -o before")]
         published = [i for i, op in enumerate(ops) if op.startswith("publish ")]
@@ -773,6 +806,8 @@ def main() -> int:
               and "applier refused" in g.log() and not g.journal()
               and not any(o.startswith("mount -uw") for o in g.ops())
               and g.stack() == OVL + [BASE], g)
+        check("15 failed request: an on-screen notice names install.log on the stick",
+              "install failed" in g.popups() and "install.log" in g.popups(), g)
 
         # 15b. duplicate anchor refuses the same way
         dup = dict(STOCK)
@@ -983,6 +1018,20 @@ def main() -> int:
               and (g.imgdir / IMG).read_bytes() == OLD_IMAGE
               and not any(op.startswith("dinit ") for op in g.ops()), g)
 
+        for label, mutate in (
+                ("missing", lambda p: p.unlink()),
+                ("altered", lambda p: p.write_bytes(b"not a PNG"))):
+            g.reset()
+            icon = g.usb / "yafc-payload/hmi/icons/day/50x50/parkingfeatures/icon_hero_view_active.png"
+            mutate(icon)
+            g.arm("RUN-YAFC-INSTALL")
+            r = g.dispatch()
+            check(f"33b Hero icon {label}: refused before any image build or slot write",
+                  r.returncode == 9 and g.failed() and not g.done() and g.state() == fresh
+                  and "HMI icon" in g.failed_text() and not g.journal()
+                  and not any(op.startswith(("mount -uw", "dinit")) for op in g.ops())
+                  and g.images() == [] and g.stack() == OVL + [BASE], g)
+
         g.reset()
         (g.usb / "yafc-payload/camera.conf").unlink()
         g.arm("RUN-YAFC-INSTALL")
@@ -1072,7 +1121,9 @@ def main() -> int:
         # nothing is written.
         for victim, rel in ((OVL[1], "fordhmi/qml/+10inchP/Root.qml"),
                             (OVL[0], "apps/usr/lib/libRCN_DiagnosticsLib.so"),
-                            ("overlay_zz.img", "fordhmi/qml/hmirvc/+10inchP/RVCPopup.qml")):
+                            ("overlay_zz.img", "fordhmi/qml/hmirvc/+10inchP/RVCPopup.qml"),
+                            ("overlay_icons.img",
+                             "fordhmi/qml/themes/ford-10P-MY20/icons/day/50x50/parkingfeatures/icon_hero_view_active.png")):
             g.reset(images=[victim], overlays={victim: {rel: "shadow\n"}})
             g.arm("RUN-YAFC-INSTALL")
             r = g.dispatch()

@@ -2,8 +2,9 @@
 # yafc-dispatch.sh: start a YAFC request from a marker file on the stick.
 #
 # Install it as <USB>/SyncMyMod/autoinstall.sh, which the jailbreak's USB hook
-# runs on every insertion. With no marker it does nothing at all, so the stick
-# cannot change the unit by accident.
+# runs on every insertion. With no marker it does nothing to the unit, so the
+# stick cannot change it by accident; it only shows a notice and logs to
+# yafc-install/seen.log.
 #
 #   RUN-YAFC-INSTALL    put YAFC's library in the camera's slot and publish the HMI image
 #   RUN-YAFC-REHEARSE   the same path with the unit's own bytes (no picture change)
@@ -34,13 +35,36 @@ esac
 PATH=${PATH:+$PATH:}/proc/boot:/bin:/usr/bin:/fs/mp/bin:/fs/mp/usr/bin:/fs/rwdata/dev
 export PATH
 WORK=$USB/yafc-install.sh
-[ -f "$WORK" ] || { echo "missing $WORK" >&2; exit 1; }
 REPORT=$USB/yafc-install
 
 seen() {
   mkdir -p "$REPORT" 2>/dev/null || true
   echo "$* $(date -u 2>/dev/null)" >> "$REPORT/seen.log" 2>/dev/null || true
 }
+
+# On-screen notice through utserviceutility popup, the same call the worker
+# uses. Best effort and bounded: a missing or stuck utility must never change
+# what the dispatcher does, so its status is ignored and it is killed after 5 s.
+POPUP_TEXT=${YAFC_POPUP_TEXT:-/fs/tmpfs/yafc-popup.txt}
+popup() {  # popup MESSAGE
+  printf '%s\n' "$1" > "$POPUP_TEXT" 2>/dev/null || return 0
+  utserviceutility popup "$POPUP_TEXT" </dev/null >/dev/null 2>&1 &
+  POPUP_PID=$!
+  POPUP_I=0
+  while [ "$POPUP_I" -lt 5 ] && kill -0 "$POPUP_PID" 2>/dev/null; do
+    sleep 1; POPUP_I=$((POPUP_I + 1))
+  done
+  kill "$POPUP_PID" 2>/dev/null || true
+  wait "$POPUP_PID" 2>/dev/null || true
+  return 0
+}
+
+if [ ! -f "$WORK" ]; then
+  echo "missing $WORK" >&2
+  seen "refused: missing yafc-install.sh at the stick root"
+  popup "YAFC refused: yafc-install.sh is missing from this stick. Nothing was changed. Copy the whole zip to the stick again."
+  exit 1
+fi
 
 found=0
 mode=
@@ -53,7 +77,12 @@ for spec in "RUN-YAFC-INSTALL:install" "RUN-YAFC-REHEARSE:rehearse" \
   for dir in "$USB" "$USB/SyncMyMod"; do
     f=$dir/$name
     if [ -e "$f" ] || [ -L "$f" ]; then
-      [ -f "$f" ] && [ ! -L "$f" ] || { echo "$name must be a plain file" >&2; exit 1; }
+      [ -f "$f" ] && [ ! -L "$f" ] || {
+        echo "$name must be a plain file" >&2
+        seen "refused: $name must be a plain file"
+        popup "YAFC refused: a marker on this stick is not a plain file. Nothing was changed. Details: yafc-install/seen.log on the USB stick."
+        exit 1
+      }
       found=$((found + 1))
       mode=$want
       marker=$f
@@ -64,17 +93,20 @@ done
 if [ "$found" -gt 1 ]; then
   echo "refused: more than one RUN-YAFC-* marker is present; arm ONE" >&2
   seen "refused: more than one RUN-YAFC-* marker present"
+  popup "YAFC refused: more than one marker is on this stick. Nothing was changed. Details: yafc-install/seen.log on the USB stick."
   exit 1
 fi
 
 if [ "$found" = 0 ]; then
   seen "stick seen; no marker, nothing done"
+  popup "YAFC: no install or uninstall marker is armed on this USB stick, so nothing was changed. Details: yafc-install/seen.log on the USB stick."
   exit 0
 fi
 
 if [ -e "$marker.running" ] || [ -L "$marker.running" ]; then
   echo "refused: $marker.running records an earlier request" >&2
   seen "refused: ${marker##*/}.running records an earlier request; preserve it and its receipts"
+  popup "YAFC refused: an earlier request on this stick did not finish. Nothing was changed. Details: yafc-install/seen.log on the USB stick."
   exit 1
 fi
 

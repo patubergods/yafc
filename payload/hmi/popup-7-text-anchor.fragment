@@ -3,5 +3,5 @@
 # target: hmirvc/+10inchP/RVCPopup.qml
 # edit: replace
 # find: top:container.bottom
-# replace: top: yafcShown ? undefined : container.bottom
+# replace: top: yafcHideChrome ? undefined : container.bottom
 # end-header

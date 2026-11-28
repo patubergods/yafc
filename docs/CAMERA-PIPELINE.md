@@ -89,9 +89,12 @@ only; the library does not read `cover_ms`.
 
 **Limits:** A ready file proves `screen_post_window` returned success and the compositor
 accepted the geometry. It does **not** prove the display painted the result or that a
-late-created bay ever appeared. QML timers stall with the render thread; the native's
-`LEASE_MS` expiry is local-only. No atomic cross-process liveness proof exists. `DISABLE`
-prevents new requests but does not kill an active lease. **UNPROVEN** on a radio.
+late-created bay ever appeared. QML timers stall with the render thread; the ready-file
+`LEASE_MS` expiry is local-only. No atomic cross-process liveness proof exists. A published
+layout holds until a newer record replaces it, the session changes, `DISABLE` is set, or the
+popup writes `compose=0`; `scale_quality` (Screen property 56, default 2, 0 sends nothing,
+1 is fastest) applies to the camera window and the second view. **UNPROVEN** on a radio other
+than the one 2020 Explorer ST.
 
 **UNPROVEN:** child-window creation, sharing, placement, and visibility on every target.
 **UNPROVEN:** the public fragments and this library have never been applied to a radio.

@@ -1,0 +1,70 @@
+name: Bug report
+description: An install, uninstall or camera problem. Attach the logs from the USB stick.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        YAFC is an unofficial hobby project with no warranty and no support promise. Read
+        [TROUBLESHOOTING.md](https://github.com/patubergods/yafc/blob/main/docs/TROUBLESHOOTING.md)
+        first. **Do not post your VIN, licence plate, phone or Wi-Fi details** in the text or in any
+        photo.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: What went wrong?
+      options:
+        - The install did not finish or failed
+        - The uninstall did not finish or failed
+        - Nothing happened when I plugged the stick in
+        - The camera picture or controls are wrong after installing
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Which zip and version?
+      description: For example YAFC-0.1.0-beta.3-install.zip
+    validations:
+      required: true
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle, model year and screen
+      description: For example 2020 Explorer ST, 10 inch portrait. Add the SYNC software version if you know it.
+    validations:
+      required: true
+  - type: textarea
+    id: message
+    attributes:
+      label: What did the radio screen show, and how long after you plugged the stick in?
+      description: The exact message if there was one, or "nothing within two minutes".
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Zip the whole `yafc-install` folder from the USB stick and drag it here. If you cannot
+        attach it, paste `yafc-install/install.log` and `yafc-install/seen.log`. Skim them first.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have not plugged the failed stick in again and again.
+        - label: There is no VIN, plate, phone or Wi-Fi detail in this report or its attachments.
+          required: true
+        - label: I understand this is a hobby project with no warranty and no support promise.
+          required: true

@@ -32,8 +32,10 @@
  *   session and an advancing sequence number. The library accepts the request
  *   only when the session matches; acknowledges by writing /fs/tmpfs/yafc-ready
  *   after a successful real post with verified geometry. A stale, partial, or
- *   mismatched request expires within LEASE_MS; the library then restores the
- *   factory window geometry.
+ *   mismatched request is ignored. A valid record keeps authority until a newer
+ *   one replaces it, the session changes, DISABLE is set, or compose=0 releases.
+ *   LEASE_MS only gates the ready file. A noncombined view or non-compose mode
+ *   restores stock.
  *
  * GUARANTEES AND LIMITS
  *   1. A ready file means screen_post_window returned success and the requested
@@ -50,7 +52,7 @@
  *      toggled. If the bay is destroyed by the window manager, recreating it
  *      leaves a black rectangle. The self-heal tick retries a bounded number
  *      of times (30); a permanently lost bay needs a reboot.
- *   4. DISABLE prevents new requests but does not kill the current lease.
+ *   4. Runtime DISABLE blocks both live and configured composition.
  *      The library fails closed: any step that cannot be made correct leaves
  *      the factory geometry and stops asserting a custom layout.
  *
@@ -114,6 +116,7 @@ typedef unsigned int u32;
 #define SP_ZORDER           54
 #define SP_TRANSPARENCY     46   /* [screen.h] SCREEN_PROPERTY_TRANSPARENCY */
 #define SP_SENSITIVITY      57   /* [screen.h] SCREEN_PROPERTY_SENSITIVITY */
+#define SP_SCALE_QUALITY    56   /* [screen.h] SCREEN_PROPERTY_SCALE_QUALITY */
 #define SP_ID_STRING        20   /* [screen.h] SCREEN_PROPERTY_ID_STRING */
 #define TRANSPARENCY_SOURCE 0    /* QNX screen_transparency_t: SOURCE = 0 (docs 7.1) */
 #define SENSITIVITY_NEVER   2    /* [screen.h] SCREEN_SENSITIVITY_NEVER */
@@ -257,10 +260,11 @@ static int g_view_compose = 1;
 /* Rectangles, x,y,w,h. cam_dst and bay_dst are SCREEN coordinates (window
  * POSITION/SIZE), cam_src and bay_src are buffer coordinates. Overridden by
  * camera.conf or the RAM mailbox. bay_dst with zero width or height disables the bay. */
-static int g_cam_src[4] = {0, 0, 438, 480};
-static int g_cam_dst[4] = {0, 71, 800, 527};
-static int g_bay_src[4] = {448, 0, 272, 480};
-static int g_bay_dst[4] = {0, 0, 0, 0};
+static const int g_default_rects[4][4] = {
+    {0, 0, 438, 480}, {0, 71, 800, 527}, {448, 0, 272, 480}, {0, 0, 0, 0}
+};
+static int g_config_rects[4][4], g_config_compose = 1;
+static int g_cam_src[4], g_cam_dst[4], g_bay_src[4], g_bay_dst[4];
 /* sen_dst / tail_dst are still parsed so configs that carry them stay valid,
  * but nothing uses them since the pixel compose was removed. */
 static int g_sen_dst[4];
@@ -272,6 +276,10 @@ static int g_tail_dst[4];
 static int g_geo_dirty = 1;
 /* 1 while the camera window carries our geometry, for the restore branch. */
 static int g_geo_ours;
+/* scale_quality=0..2 (0 Ford's default, 1 fastest, 2 nicest) and the last value
+ * sent to each window; 0 means never sent. */
+static int g_scale_q;
+static int g_scale_cam, g_scale_bay;
 /* Counters for the stats line. */
 static int g_geo_pushes;
 /* Self-heal cadence and the bounded bay-retry budget (see the compose branch). */
@@ -387,17 +395,30 @@ static int parse_int(const char *v, int dflt)
     return got ? n : dflt;
 }
 
-/* Parse one rect key into tmp, and mark the geometry dirty only if the VALUE
- * differs from what is in force. */
-static void take_rect(const char *v, int *cur)
+static void select_rects(const int rects[4][4])
 {
-    int t[4];
-    if (parse_rect(v, t) != 0) return;
-    if (!rect_eq(t, cur)) { rect_copy(cur, t); g_geo_dirty = 1; }
+    int *dst[] = { g_cam_src, g_cam_dst, g_bay_src, g_bay_dst };
+    int i;
+    for (i = 0; i < 4; ++i) {
+        if (!rect_eq(dst[i], rects[i])) {
+            rect_copy(dst[i], rects[i]);
+            g_geo_dirty = 1;
+        }
+    }
+}
+
+static void select_config_view(void)
+{
+    g_view_compose = g_config_compose;
+    if (g_mode == 2 && g_view_compose) select_rects(g_config_rects);
 }
 
 #ifdef YAFC_SLOT
 static int g_live_view;
+#define DISABLE_PATH "/fs/rwdata/yafc/DISABLE"
+#define DISABLE_POLL_MS 500
+static int g_disabled;
+static long long g_disable_check_ms;
 #define SESSION_PATH "/fs/tmpfs/yafc-session"
 #define READY_PATH   "/fs/tmpfs/yafc-ready"
 #define REQUEST_MAX 192
@@ -405,18 +426,47 @@ static int g_live_view;
 #define LEASE_MS 500
 #endif
 static char g_session[36], g_request[REQUEST_MAX];
-static int g_session_len, g_request_len, g_serial, g_acked;
+static int g_session_len, g_request_len, g_serial, g_acked, g_ack_logged;
 static long long g_request_ms;
 static int file_exists(const char *path);
 
+/* Check new requests immediately. With no publisher, bound kill-switch latency
+ * without opening rwdata on every frame of the camera's IRQ thread. */
+static int runtime_disabled(long long now, int new_request)
+{
+    if (!g_disable_check_ms || now < g_disable_check_ms ||
+        now - g_disable_check_ms >= DISABLE_POLL_MS ||
+        (new_request && now != g_disable_check_ms)) {
+        g_disabled = file_exists(DISABLE_PATH);
+        g_disable_check_ms = now;
+    }
+    return g_disabled;
+}
+
 static int publish(const char *path, const char *data, int len)
 {
-    int fd, ok;
-    unlink(path);
-    fd = open(path, 0x501 /* O_WRONLY | O_CREAT | O_EXCL */, 0644);
-    if (fd < 0) return 0;
+    /* The radio's open() does not accept every flag combination the comments
+     * here once assumed, so try the plausible sets. 0x109
+     * (O_WRONLY|O_CREAT|O_APPEND) is known good: diag_log uses it. */
+    static const int flags[4] = {0x501, 0x301, 0x101, 0x109};
+    static int logged_fail, logged_ok;
+    int i, fd = -1, ok;
+    for (i = 0; i < 4; i++) {
+        unlink(path);
+        fd = open(path, flags[i], 0644);
+        if (fd >= 0) break;
+    }
+    if (fd < 0) {
+        if (!logged_fail) { logged_fail = 1; diag_log("publish open failed", len, 0, 0); }
+        return 0;
+    }
     ok = write(fd, data, (unsigned)len) == len;
-    return close(fd) == 0 && ok;
+    if (close(fd) != 0 || !ok) {
+        if (!logged_fail) { logged_fail = 1; diag_log("publish write failed", len, ok, 0); }
+        return 0;
+    }
+    if (!logged_ok) { logged_ok = 1; diag_log("publish ok flags", flags[i], len, 0); }
+    return 1;
 }
 
 static void begin_session(void)
@@ -439,12 +489,10 @@ static void withdraw_ready(void)
 
 /* PID.start-time;sequence;compose;rectangles. The sequence must advance within
  * a local monotonic lease. A stuck, partial or legacy mailbox is not authority. */
-static void read_live_view(void)
+static void read_live_view(long long now)
 {
     char buf[REQUEST_MAX], *p, *end;
     int rects[4][4], i, compose, seq = 0, digits = 0;
-    long long now = now_ms();
-    int *dst[] = { g_cam_src, g_cam_dst, g_bay_src, g_bay_dst };
     int fd;
     long n;
     /* Transient failures (parse errors, missing file, old sequence)
@@ -485,13 +533,10 @@ static void read_live_view(void)
     }
     if (seq < g_serial) return;
     if (seq == g_serial) {
-        if (n != g_request_len || now < g_request_ms || now - g_request_ms >= LEASE_MS) {
-            g_live_view = 0;
-            return;
-        }
+        if (!g_live_view || n != g_request_len) return;
         for (i = 0; i < n; ++i) if (buf[i] != g_request[i]) return;
     } else {
-        if (file_exists("/fs/rwdata/yafc/DISABLE")) { g_live_view = 0; return; }
+        if (runtime_disabled(now, 1)) { g_live_view = 0; return; }
         for (i = 0; i < n; ++i) g_request[i] = buf[i];
         g_request_len = (int)n;
         g_serial = seq;
@@ -500,16 +545,21 @@ static void read_live_view(void)
     g_live_view = 1;
     g_view_compose = compose;
     if (!compose) return;
-    /* Do not overwrite applied rectangles when the mode is about to
-     * leave composition. g_geo_ours means our geometry is on the window;
-     * if the config then says pass, the mailbox must not change the
-     * values that restore_stock_geometry compares against. */
-    if (g_geo_ours && g_mode != 2) return;
-    for (i = 0; i < 4; ++i) {
-        if (!rect_eq(dst[i], rects[i])) {
-            rect_copy(dst[i], rects[i]);
-            g_geo_dirty = 1;
-        }
+    if (g_mode == 2) select_rects(rects);
+}
+
+static void update_view(long long now, int reshow)
+{
+    int was_live = g_live_view;
+    /* A record holds until replaced. Dropping it on a missed renewal sent the
+     * camera back to the configured Hero rectangles while Ford's own zoom
+     * stalled the popup's heartbeat (Zoomed View showed Hero geometry under
+     * the Rear Only backdrop). The proven private build never expired. */
+    if (runtime_disabled(now, 0)) g_live_view = 0;
+    else if (!reshow) read_live_view(now);
+    if (was_live && !g_live_view) {
+        withdraw_ready();
+        select_config_view();
     }
 }
 #else
@@ -520,7 +570,7 @@ static void read_config(void)
 {
     char buf[CONF_MAX];
     long n = 0;
-    int fd, view_compose = 1, mode = 0, reread = 60, stats = 0, bay_id = 0;
+    int fd, i, view_compose = 1, mode = 0, reread = 60, stats = 0, bay_id = 0, scale_q = 2;
 
     fd = open(CONF_PATH, 0 /* O_RDONLY */);
     if (fd < 0) fd = open("camera.conf", 0);   /* PC test / development fallback */
@@ -535,6 +585,7 @@ static void read_config(void)
         return;
     }
     buf[n] = 0;
+    for (i = 0; i < 4; ++i) rect_copy(g_config_rects[i], g_default_rects[i]);
 
     /* Walk lines. No quoting, no spaces around '=', first match per line. The
      * file is the source of truth, so absent keys revert to their defaults. */
@@ -549,20 +600,15 @@ static void read_config(void)
                 else if (starts_with(v, "compose")) mode = 2;
                 else mode = 0;
             }
-            if (!g_live_view && starts_with(p, "view=")) view_compose = view_is_combined(p + 5);
+            if (starts_with(p, "view=")) view_compose = view_is_combined(p + 5);
             if (starts_with(p, "reread="))   reread = parse_int(p + 7, 60);
             if (starts_with(p, "stats="))    stats = (p[6] == '1');
             if (starts_with(p, "bay_id="))   bay_id = (p[7] == '1');
-            if (!g_live_view
-#ifdef YAFC_SLOT
-                && !g_geo_ours
-#endif
-            ) {
-                if (starts_with(p, "cam_src=")) take_rect(p + 8, g_cam_src);
-                if (starts_with(p, "cam_dst=")) take_rect(p + 8, g_cam_dst);
-                if (starts_with(p, "bay_src=")) take_rect(p + 8, g_bay_src);
-                if (starts_with(p, "bay_dst=")) take_rect(p + 8, g_bay_dst);
-            }
+            if (starts_with(p, "scale_quality=")) { scale_q = parse_int(p + 14, 0); if (scale_q < 0 || scale_q > 2) scale_q = 0; }
+            if (starts_with(p, "cam_src=")) parse_rect(p + 8, g_config_rects[0]);
+            if (starts_with(p, "cam_dst=")) parse_rect(p + 8, g_config_rects[1]);
+            if (starts_with(p, "bay_src=")) parse_rect(p + 8, g_config_rects[2]);
+            if (starts_with(p, "bay_dst=")) parse_rect(p + 8, g_config_rects[3]);
             if (starts_with(p, "sen_dst="))  parse_rect(p + 8,  g_sen_dst);
             if (starts_with(p, "tail_dst=")) parse_rect(p + 9,  g_tail_dst);
             if (*end == 0) break;
@@ -570,10 +616,12 @@ static void read_config(void)
         }
     }
     g_mode = mode;
-    if (!g_live_view) g_view_compose = view_compose;
+    g_config_compose = view_compose;
+    if (!g_live_view) select_config_view();
     g_reread = reread;
     g_stats = stats;
     g_bay_id = bay_id;
+    if (scale_q != g_scale_q) { g_scale_q = scale_q; g_geo_dirty = 1; }
     g_last_read_ms = now_ms();
 }
 
@@ -709,6 +757,18 @@ static void bay_destination(int wp[2], int ws[2])
     if (g_bay_dst[3] > 0 && ws[1] < 1) ws[1] = 1;
 }
 
+/* Send the wanted scaling quality to a window only when it differs from what we
+ * last sent. The default (0) sends nothing: the camera stays exactly as Ford
+ * made it unless scale_quality is set. 2 is the nicest filter. */
+static void scale_sync(void *w, int *last)
+{
+    int v = g_scale_q, rc;
+    if (!w || !set_win_iv || *last == v) return;
+    rc = set_win_iv(w, SP_SCALE_QUALITY, &v);
+    *last = v;
+    diag_log("scale quality set", v, rc, 0);
+}
+
 static int g_bay_set_ok, g_cam_set_ok;
 static int bay_apply_geometry(void)
 {
@@ -719,6 +779,7 @@ static int bay_apply_geometry(void)
     if (set_win_iv(g_bay_win, SP_SOURCE_SIZE,     ss)) fail |= 2;
     if (set_win_iv(g_bay_win, SP_POSITION,        wp)) fail |= 4;
     if (set_win_iv(g_bay_win, SP_SIZE,            ws)) fail |= 8;
+    scale_sync(g_bay_win, &g_scale_bay);
     {
         /* The child rect in parent units, so a wrong scale is visible in
          * post.log next to the screen rect above. */
@@ -840,18 +901,27 @@ static int geometry_is_ours(void *win)
     return 1;
 }
 
+/* A failed layout switch can leave properties from two different views on
+ * Screen. Restore against the last successful write to each property. */
+static int g_applied[4][2], g_applied_mask;
+static int set_camera_pair(void *win, int prop, const int *v, int i)
+{
+    if (set_win_iv(win, prop, v)) return 1;
+    g_applied[i][0] = v[0]; g_applied[i][1] = v[1];
+    g_applied_mask |= 1 << i;
+    return 0;
+}
+
 static void apply_camera_geometry(void *win)
 {
-    int sp[2], ss[2], wp[2], ws[2], fail = 0;
-    sp[0] = g_cam_src[0]; sp[1] = g_cam_src[1];
-    ss[0] = g_cam_src[2]; ss[1] = g_cam_src[3];
-    wp[0] = g_cam_dst[0]; wp[1] = g_cam_dst[1];
-    ws[0] = g_cam_dst[2]; ws[1] = g_cam_dst[3];
-    if (set_win_iv(win, SP_SOURCE_POSITION, sp)) fail |= 1;
-    if (set_win_iv(win, SP_SOURCE_SIZE,     ss)) fail |= 2;
-    if (set_win_iv(win, SP_POSITION,        wp)) fail |= 4;
-    if (set_win_iv(win, SP_SIZE,            ws)) fail |= 8;
+    int fail = 0;
+    if (!g_geo_ours) g_applied_mask = 0;
+    if (set_camera_pair(win, SP_SOURCE_POSITION, g_cam_src,     2)) fail |= 1;
+    if (set_camera_pair(win, SP_SOURCE_SIZE,     g_cam_src + 2, 3)) fail |= 2;
+    if (set_camera_pair(win, SP_POSITION,        g_cam_dst,     0)) fail |= 4;
+    if (set_camera_pair(win, SP_SIZE,            g_cam_dst + 2, 1)) fail |= 8;
     g_geo_pushes++;
+    scale_sync(win, &g_scale_cam);
     g_cam_set_ok = !fail;
     g_geo_ours = 1;
     {
@@ -879,7 +949,6 @@ static int read_geometry(void *win, int r[4][2])
 
 #ifdef YAFC_SLOT
 #define SLOT_DIR       "/fs/rwdata/yafc/"
-#define DISABLE_PATH   SLOT_DIR "DISABLE"
 #define INFLIGHT_PATH  SLOT_DIR "slot-inflight"
 #define STRIKES_PATH   SLOT_DIR "slot-strikes"
 #define BOOT_PATH      "/fs/rwdata/.flags/boot_count"
@@ -913,16 +982,18 @@ static void marker_clear(void)
 static void restore_stock_geometry(void *win)
 {
     static const int props[] = { SP_POSITION, SP_SIZE, SP_SOURCE_POSITION, SP_SOURCE_SIZE };
-    const int *ours[] = { g_cam_dst, g_cam_dst + 2, g_cam_src, g_cam_src + 2 };
     int i, cur[2], ok = 1, full = geometry_is_ours(win) == 1;
     if (!g_orig_valid || !set_win_iv || !get_win_iv) return;
     for (i = 0; i < 4; ++i) {
+        if (!(g_applied_mask & (1 << i))) continue;
         if (get_win_iv(win, props[i], cur)) { ok = 0; continue; }
         if (!full && cur[0] == g_orig[i][0] && cur[1] == g_orig[i][1]) continue;
-        if (cur[0] != ours[i][0] || cur[1] != ours[i][1]) continue;
+        if (cur[0] != g_applied[i][0] || cur[1] != g_applied[i][1]) continue;
         if (set_win_iv(win, props[i], g_orig[i]) || get_win_iv(win, props[i], cur) ||
             cur[0] != g_orig[i][0] || cur[1] != g_orig[i][1]) ok = 0;
     }
+    /* Give the camera window back Ford's default scaling when we leave. */
+    if (g_scale_cam) { int z = 0; set_win_iv(win, SP_SCALE_QUALITY, &z); g_scale_cam = 0; }
     if (!ok) {
         if (!g_restore_fail) diag_log("stock geometry restore unconfirmed", 0, 0, 0);
         g_restore_fail = 1;
@@ -1008,6 +1079,10 @@ static int size_is_ours(void *win)
 static void pre_post(void *win, int reshow)
 {
     long long now = now_ms();
+    /* The camera's constructor runs before /fs/tmpfs is mounted, so the session
+     * file cannot be written there yet and the popup has nothing to prefix a
+     * mailbox record with. Establish it here instead, once the path exists. */
+    if (!g_session_len) begin_session();
     /* Read the config first: g_mode must be current before we consume a
      * mailbox entry, so that read_live_view does not overwrite the applied
      * rectangles when mode is not compose. */
@@ -1015,10 +1090,8 @@ static void pre_post(void *win, int reshow)
         g_tick = 0;
         if (now - g_last_read_ms >= (g_live_view ? 500 : g_reread_ms)) read_config();
     }
-    /* Do not consume a new selection on a re-show of the old buffer. */
-    if (!reshow) read_live_view();
-    else if (now < g_request_ms || now - g_request_ms >= LEASE_MS) g_live_view = 0;
-    if (g_slot_dead || !g_live_view || g_mode != 2 || !g_view_compose || !set_win_iv) {
+    update_view(now, reshow);
+    if (g_disabled || g_slot_dead || g_mode != 2 || !g_view_compose || !set_win_iv) {
         withdraw_ready();
         leave_composition(win);
         return;
@@ -1082,7 +1155,7 @@ static void post_logic(void *win, void *buf)
 #endif
 
 #ifdef YAFC_SLOT
-    if (!g_live_view || g_slot_dead) { leave_composition(win); return; }
+    if (g_disabled || g_slot_dead) { leave_composition(win); return; }
 #endif
     if (g_mode != 2 || !g_view_compose || !set_win_iv) {
         /* Not ours: hide the bay and hand the window back once. Never destroy
@@ -1156,7 +1229,7 @@ static int slot_identify(void *win)
     if (get_win_cv(win, SP_ID_STRING, sizeof id - 1, id) == 0 && starts_with(id, "RVC_app") && id[7] == 0) {
         g_cam_win = win;
         read_config();      /* must read mode before consuming mailbox */
-        read_live_view();
+        update_view(now_ms(), 0);
         __sync_synchronize();
         g_is_cam = 1;
     } else if (++g_ident_tries >= 32) {
@@ -1188,14 +1261,28 @@ static int bay_matches_request(void)
 static void acknowledge_post(void *win)
 {
     long long now = now_ms();
-    if (now <= 0 || now < g_request_ms || now - g_request_ms >= LEASE_MS ||
-        !g_live_view || !g_view_compose || g_mode != 2 || g_slot_dead ||
-        !g_geo_ours || !g_cam_set_ok || g_geo_dirty) { withdraw_ready(); return; }
+    int a = 0, b = 0, geo, bay;
+    if (now <= 0) a |= 1;
+    if (now < g_request_ms || now - g_request_ms >= LEASE_MS) a |= 2;
+    if (!g_live_view) a |= 4;
+    if (!g_view_compose) a |= 8;
+    if (g_mode != 2) b |= 1;
+    if (g_slot_dead) b |= 2;
+    if (!g_geo_ours) b |= 4;
+    if (!g_cam_set_ok) b |= 8;
+    if (g_geo_dirty) b |= 16;
+    if (a || b) {
+        if (!g_ack_logged) { g_ack_logged = 1; diag_log("ack gated a/b", a, b, 0); }
+        withdraw_ready();
+        return;
+    }
     if (g_acked == g_serial) return;
-    if (geometry_is_ours(win) == 1 && bay_matches_request() &&
-        publish(READY_PATH, g_request, g_request_len)) {
+    geo = geometry_is_ours(win);
+    bay = bay_matches_request();
+    if (geo == 1 && bay && publish(READY_PATH, g_request, g_request_len)) {
         g_acked = g_serial;
     } else {
+        if (!g_ack_logged) { g_ack_logged = 1; diag_log("ack mismatch geo/bay", geo, bay, 0); }
         withdraw_ready();
     }
 }
