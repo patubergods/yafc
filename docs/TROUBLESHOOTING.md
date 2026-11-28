@@ -63,6 +63,9 @@ Attach the whole `yafc-install` folder from the USB stick, zipped. Say:
 - what message, if any, appeared on the screen and about how long after you plugged the stick in;
 - what you expected, and what you saw instead.
 
+If the installer refuses an unknown stock slot, include the `observed SHA-256` from `FAILED`
+or `install.log`. It identifies the library build; it does not establish compatibility.
+
 Before you attach anything, skim the files. The installer logs hold file names, hashes and mount
 lists and no personal data that we know of, but you are the one sharing them. Do **not** post
 photos or screenshots that show your VIN, licence plate, phone, or Wi-Fi details.
