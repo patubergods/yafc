@@ -3,6 +3,11 @@
 Dates are UTC. This project was split out of a larger project that also covers the vehicle's other
 mods; anything before the split is not part of this repository.
 
+## Unreleased
+
+- Log the observed SHA-256 when refusing an unknown unowned stock library.
+  The accepted stock fingerprint and preflight checks are unchanged.
+
 ## 2026-11-27 (radio run, layout hold, on-screen notices, beta.3)
 
 - The packaged installer was run on one 2020 Explorer ST (10-inch portrait): install, uninstall

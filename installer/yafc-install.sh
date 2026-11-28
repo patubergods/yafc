@@ -844,8 +844,10 @@ read_pair || abort "active slot, stock backup, image or ownership record is not 
 before_slot=$have_slot before_old=$have_old before_image=$have_image before_owner=$have_owner
 before_record="YAFC1 $FACTORY $before_slot $before_old $before_image"
 if [ "$before_owner" = - ]; then
-  [ "$before_slot $before_old $before_image" = "$FACTORY - -" ] ||
-    abort "unknown stock slot, or unowned preserved library or HMI image; nothing changed" 3
+  [ "$before_slot" = "$FACTORY" ] ||
+    abort "unknown stock slot: observed SHA-256 $before_slot; nothing changed" 3
+  [ "$before_old $before_image" = "- -" ] ||
+    abort "unowned preserved library or HMI image; nothing changed" 3
 else
   owner_record=$(state_record "$OWNER") && [ "$owner_record" = "$before_record" ] ||
     abort "ownership record does not match the active slot, stock backup and HMI image; nothing changed" 3

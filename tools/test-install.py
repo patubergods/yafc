@@ -1114,6 +1114,10 @@ def main() -> int:
                   and {p.name: (p.read_bytes() if p.is_file() else None) for p in g.lib.iterdir()} == lib_before
                   and {p.name: p.read_bytes() for p in g.imgdir.iterdir()} == img_before
                   and not g.journal(), g)
+            if label == "unknown stock slot":
+                reason = f"unknown stock slot: observed SHA-256 {digest(PREVIOUS)}"
+                check("38 unknown stock slot: fingerprint in log and failure receipt",
+                      reason in g.log() and reason in g.failed_text(), g)
 
         # 39. another boot overlay providing a target path is refused. The
         # inspection now runs after the mount stack is reduced, so the refusal
